@@ -1282,7 +1282,7 @@ export async function runVerticalSliceValidation(
     dtoMappingValidation,
     architecturalReview: {
       currentRisks: [
-        "Org isolation and stale-authorization-cache checks are warning-level until DB-backed/RLS adapters are wired.",
+        "DB-backed SQL/RLS assertions still need runtime adapter execution against managed database in CI.",
         "In-memory stress harness cannot measure true lock contention under production DB semantics.",
       ],
       whatWorked: [
@@ -1307,10 +1307,10 @@ export async function runVerticalSliceValidation(
       earlyRefactors: [
         "Replace in-memory/query-validator placeholders with real DB-backed adapter metrics assertions.",
         "Enforce strict MIME allow-list + checksum verification in attachment adapter with quarantine flow.",
-        "Add stale-authorization-cache invalidation test fixtures tied to identity-access adapter.",
+        "Connect auth role-revision source-of-truth to cache invalidation events from identity-access module.",
       ],
       unclearBoundaries: [
-        "Tenant isolation and ownership bypass checks need DB adapter + RLS runtime assertions to move from warning to pass/fail hard gate.",
+        "Tenant isolation hard gate is migration-backed now, but requires continuous runtime SQL policy tests in pipeline.",
       ],
       couplingsDetected: [
         "Vertical slice service is intentionally central for validation, but must remain test-orchestration-only to avoid fat orchestrator drift.",
