@@ -21,18 +21,29 @@ const errorUiSchema = z.object({
   linkTicketId: z.string().uuid(),
 });
 
-const defaults = {
+type ErrorUiForm = {
+  orgId: string;
+  code: string;
+  title: string;
+  details: string;
+  severity: "low" | "medium" | "high" | "critical";
+  relatedSolutionIds: string;
+  linkedTicketIds: string;
+  linkTicketId: string;
+};
+
+const defaults: ErrorUiForm = {
   orgId: "11111111-1111-1111-1111-111111111111",
   code: "INV-DC-21",
   title: "DC connector instability",
   details: "Frequent disconnects under thermal expansion at noon peak.",
-  severity: "high" as const,
+  severity: "high",
   relatedSolutionIds: "55555555-5555-5555-5555-555555555555",
   linkedTicketIds: "66666666-6666-6666-6666-666666666666",
   linkTicketId: "66666666-6666-6666-6666-666666666666",
 };
 
-function mapErrorUiToRequest(input: typeof defaults): ErrorIntelligenceSliceRequestDto {
+function mapErrorUiToRequest(input: ErrorUiForm): ErrorIntelligenceSliceRequestDto {
   return {
     orgId: input.orgId,
     errorCode: {
