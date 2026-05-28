@@ -34,6 +34,9 @@ interface AttachmentRow {
   orgId: string;
   ownerType: "ticket" | "field_task";
   ownerId: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256: string;
   status: string;
 }
 
@@ -47,6 +50,7 @@ interface OutboxMessageRow {
   sequence: number;
   status: "pending" | "delivered" | "failed";
   attemptCount: number;
+  lastError?: string;
 }
 
 function cloneMap<K, V>(source: Map<K, V>, cloneValue?: (value: V) => V) {
@@ -226,6 +230,7 @@ class InMemoryOutbox implements DomainOutbox {
       ...row,
       status: "failed",
       attemptCount: row.attemptCount + 1,
+      lastError: input.reason,
     });
   }
 
@@ -371,13 +376,29 @@ class InMemoryAttachmentRepo implements SliceAttachmentRepositoryPort {
     storageProvider: string;
     storageKey: string;
   }) {
-    const ownerExists =
+    const ownerRow =
       input.ownerType === "ticket"
-        ? this.store.tickets.has(input.ownerId)
-        : this.store.tasks.has(input.ownerId);
+        ? this.store.tickets.get(input.ownerId)
+        : this.store.tasks.get(input.ownerId);
 
-    if (!ownerExists) {
+    if (!ownerRow) {
       throw new Error("ATTACHMENT_OWNER_INVALID: owner does not exist");
+    }
+
+    if (ownerRow.orgId !== input.orgId) {
+      throw new Error("ATTACHMENT_OWNERSHIP_BYPASS: owner belongs to another org");
+    }
+
+    if (!/^image\/(jpeg|png|webp)$|^application\/(pdf|octet-stream)$/.test(input.mimeType)) {
+      throw new Error("ATTACHMENT_MIME_REJECTED: mime type is not allowed");
+    }
+
+    if (!/^[a-f0-9]{64}$/i.test(input.checksumSha256)) {
+      throw new Error("ATTACHMENT_CHECKSUM_INVALID: checksum must be sha256");
+    }
+
+    if (input.sizeBytes <= 0 || input.sizeBytes > 20 * 1024 * 1024) {
+      throw new Error("ATTACHMENT_SIZE_INVALID: size must be between 1B and 20MB");
     }
 
     const attachmentId = randomUUID();
@@ -386,6 +407,9 @@ class InMemoryAttachmentRepo implements SliceAttachmentRepositoryPort {
       orgId: input.orgId,
       ownerType: input.ownerType,
       ownerId: input.ownerId,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        checksumSha256: input.checksumSha256,
       status: "uploaded",
     });
 
