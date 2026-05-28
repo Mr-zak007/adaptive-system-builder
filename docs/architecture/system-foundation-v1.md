@@ -153,3 +153,41 @@ src/
       api/
       events/
 ```
+
+## 10) Internal Engineering Review Decisions (Hardening)
+
+### A) Ticket state vs lifecycle history
+- `tickets.status` remains the fast current-state snapshot for queueing/filtering.
+- `ticket_events` is immutable append-only history for full lifecycle timelines.
+- DB triggers prevent `UPDATE/DELETE` on `ticket_events`.
+
+### B) Polymorphic attachments without weak constraints
+- Keep polymorphic design for modularity, but enforce owner integrity via DB trigger:
+  - `(owner_type, owner_id, org_id)` must reference a live owner row.
+- Add strict checksum + size constraints to reduce invalid blobs and abuse.
+- Keep dedicated owner/status timeline indexes for query performance.
+
+### C) Installed components as true field instances
+- `installed_components` remains instance-first (serial, install metadata, runtime state).
+- `catalog_model_id` is optional enrichment only, never the source of runtime state.
+
+### D) Knowledge domain remains explicitly separated
+- Separate tables are mandatory and retained:
+  - `knowledge_articles`
+  - `proven_solutions`
+  - `troubleshooting_procedures`
+  - `error_code_intelligence`
+- No generalized catch-all knowledge table.
+
+### E) Scalability controls introduced early
+- Additional indexes for ticket timelines, assignment filtering, attachment listing, unpublished events, and idempotency expiry scans.
+- BRIN index on `audit_logs.created_at` for long-range historical scans.
+- Domain event publisher optimized for unpublished outbox fetch path.
+
+### F) Optimistic concurrency and state invariants
+- `row_version` must increment by exactly 1 on each mutable aggregate update.
+- Guard triggers enforce allowed transitions for:
+  - `tickets.status`
+  - `field_tasks.status`
+  - `installation_tasks.status`
+  - `ticket_sla_timers.status`

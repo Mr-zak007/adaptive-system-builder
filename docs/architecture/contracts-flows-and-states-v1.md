@@ -129,3 +129,57 @@ Core entities included in migration v1:
 - Filter allowlist (no arbitrary column injection).
 - Large lists must have server-side hard limits (max page size).
 - Separate read model endpoints for reporting to avoid OLTP query pressure.
+
+## 6) Domain Invariants (Enforced)
+
+### Ticket aggregate
+- `tickets.status` is the **current snapshot only**.
+- `ticket_events` is the **immutable lifecycle history** (append-only).
+- Every ticket status transition must append exactly one `ticket_events` row in the same transaction.
+- Forbidden direct transition examples:
+  - `open -> assigned`
+  - `triaged -> resolved`
+  - `closed -> resolved`
+
+### Field task aggregate
+- Status transitions are guarded:
+  - allowed: `pending -> scheduled -> in_progress -> done`
+  - allowed side paths: `pending/scheduled -> canceled`, `in_progress -> failed`
+- Forbidden:
+  - `done -> in_progress`
+  - `failed -> done` without explicit reopen command (future extension)
+
+### SLA timer aggregate
+- Allowed: `pending -> running -> (met|breached|canceled)` and `pending -> (breached|canceled)`.
+- Forbidden:
+  - `met -> running`
+  - `breached -> met`
+
+### Attachments aggregate
+- `attachments` lifecycle: `uploaded -> processing -> (ready|failed) -> deleted`.
+- Owner reference must exist and belong to same `org_id` (validated by DB trigger).
+- `checksum_sha256` must be 64-hex and `size_bytes` bounded to enforce storage discipline.
+
+## 7) Authorization Boundaries
+
+- API handlers may authorize request-level access, but **all data writes** must pass through module application services.
+- Cross-module access is never done by direct table writes.
+- `identity-access` provides role checks and org scoping as shared policy service.
+- RLS and org scoping apply to operational tables; service-role usage is limited to trusted server-side jobs.
+
+## 8) Async Workflow Boundaries + Event Ownership
+
+- Event owner is always the producing bounded context:
+  - `ticket.*` by `ticketing`
+  - `field_task.*` by `field-service`
+  - `sla.*` by `sla-engine`
+  - `attachment.*` by `attachments`
+- Consumers never mutate producer-owned aggregates directly; they execute their own commands or projections.
+- `domain_events` is immutable except `published_at` update by publisher worker.
+
+## 9) Retry/Idempotency Strategy (Strict)
+
+- Synchronous commands (assignment/completion/escalation) require `Idempotency-Key`.
+- `operation_idempotency` stores request hash + response hash to replay safely.
+- Job handlers are idempotent and keyed by `dedupe_key` where applicable.
+- Retry policy uses exponential backoff + jitter and dead-letter cutoff (`max_attempts`).
