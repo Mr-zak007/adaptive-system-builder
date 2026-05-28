@@ -26,6 +26,38 @@ export const verticalSliceValidationRequestSchema = z.object({
   ]),
   includeFailureScenarios: z.boolean().default(true),
   stressLevel: z.enum(["baseline", "intensive"]).default("intensive"),
+  workflowInput: z.object({
+    ticketIntake: z.object({
+      title: z.string().trim().min(3).max(200),
+      description: z.string().trim().min(5).max(2000),
+      priority: z.enum(["low", "medium", "high", "critical"]),
+    }),
+    assignment: z.object({
+      assigneeUserId: z.string().uuid(),
+      reason: z.string().trim().min(1).max(500),
+    }),
+    fieldTask: z.object({
+      title: z.string().trim().min(3).max(200),
+      instructions: z.string().trim().min(1).max(2000),
+    }),
+    attachment: z.object({
+      ownerType: z.enum(["ticket", "field_task"]).default("field_task"),
+      fileName: z.string().trim().min(1).max(255),
+      mimeType: z.string().trim().min(3).max(100),
+      sizeBytes: z.number().int().positive().max(2147483648),
+      checksumSha256: z.string().regex(/^[A-Fa-f0-9]{64}$/),
+      storageProvider: z.string().trim().min(1).max(50),
+      storageKey: z.string().trim().min(1).max(500),
+    }),
+    resolution: z.object({
+      summary: z.string().trim().min(3).max(2000),
+    }),
+    errorCodeLinking: z.object({
+      errorCodeId: z.string().uuid(),
+      confidence: z.number().min(0).max(100).optional(),
+      source: z.string().trim().max(100).optional(),
+    }),
+  }),
 });
 
 export const scenarioResultSchema = z.object({
@@ -65,6 +97,26 @@ export const verticalSliceValidationResponseSchema = z.object({
   repositoryAndDbValidation: z.array(scenarioResultSchema),
   authorizationValidation: z.array(scenarioResultSchema),
   dtoMappingValidation: z.array(scenarioResultSchema),
+  auditTimeline: z.array(
+    z.object({
+      timestamp: z.string().datetime(),
+      action: z.string().min(1).max(120),
+      entityType: z.string().min(1).max(120),
+      entityId: z.string().min(1).max(120),
+      status: z.enum(["committed", "replayed", "failed"]),
+      stage: z.enum([
+        "ticket_intake",
+        "ticket_assignment",
+        "field_task_execution",
+        "attachment_upload",
+        "resolution",
+        "error_code_linking",
+      ]),
+      requestId: z.string().min(1).max(120),
+      correlationId: z.string().min(1).max(120),
+      details: z.record(z.string(), jsonValueSchema).default({}),
+    }),
+  ),
   architecturalReview: z.object({
     currentRisks: z.array(z.string()),
     whatWorked: z.array(z.string()),
