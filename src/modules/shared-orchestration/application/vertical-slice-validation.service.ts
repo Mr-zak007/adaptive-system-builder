@@ -111,6 +111,26 @@ export interface VerticalSliceValidationDeps {
   txManager: TransactionManager;
   idempotencyStore: IdempotencyStore;
   outbox: DomainOutbox;
+  authCache: {
+    validateStaleAuthorizationCacheScenario(input: {
+      orgId: string;
+      userId: string;
+      oldRoleRevision: string;
+      newRoleRevision: string;
+    }): Promise<{
+      staleAuthorizationRejected: boolean;
+      cacheHitWithinTtl: boolean;
+      failSafeDeniedOnCacheFailure: boolean;
+      notes: string[];
+    }>;
+  };
+  rlsPolicyValidator: {
+    validateCoverage(): Promise<{
+      tenantIsolationPoliciesPresent: boolean;
+      crossTenantLeakageGuardsPresent: boolean;
+      notes: string[];
+    }>;
+  };
   authorization: {
     canPerformAction(role: VerticalSliceValidationRequestDto["actorRole"], action: AuthorizationAction): boolean;
   };
@@ -121,6 +141,8 @@ export interface VerticalSliceValidationDeps {
       dtoViolations: Array<{ rule: string; filePath: string; details: string }>;
       domainBypassViolations: Array<{ rule: string; filePath: string; details: string }>;
       directDbAccessViolations: Array<{ rule: string; filePath: string; details: string }>;
+      forbiddenImportViolations: Array<{ rule: string; filePath: string; details: string }>;
+      eventContractDriftViolations: Array<{ rule: string; filePath: string; details: string }>;
     }>;
   };
   ticketRepo: SliceTicketRepositoryPort;
