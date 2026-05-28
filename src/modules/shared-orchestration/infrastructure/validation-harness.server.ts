@@ -10,6 +10,7 @@ import type {
   VerticalSliceValidationDeps,
 } from "@/modules/shared-orchestration/application/vertical-slice-validation.service";
 import { randomUUID } from "node:crypto";
+import { runArchitecturalFitnessChecks } from "@/modules/shared-orchestration/infrastructure/architectural-fitness-checks.server";
 
 type TicketStatus = "open" | "assigned" | "resolved";
 type TaskStatus = "pending" | "done";
@@ -462,11 +463,27 @@ class InMemoryQueryValidator implements SliceQueryValidationPort {
 
 export function createInMemoryVerticalSliceValidationDeps(): VerticalSliceValidationDeps {
   const store = new InMemoryValidationStore();
+  const permissions: Record<string, Set<string>> = {
+    admin: new Set(["ticket.assign", "task.complete", "solution.publish", "attachment.register", "error.link", "installation.update"]),
+    dispatcher: new Set(["ticket.assign", "attachment.register", "error.link", "installation.update"]),
+    field_technician: new Set(["task.complete", "attachment.register", "installation.update"]),
+    support_engineer: new Set(["ticket.assign", "solution.publish", "attachment.register", "error.link"]),
+    knowledge_manager: new Set(["solution.publish", "attachment.register", "error.link"]),
+    viewer: new Set([]),
+  };
 
   return {
     txManager: new InMemoryTransactionManager(store),
     idempotencyStore: new InMemoryIdempotencyStore(store),
     outbox: new InMemoryOutbox(store),
+    authorization: {
+      canPerformAction(role, action) {
+        return permissions[role]?.has(action) ?? false;
+      },
+    },
+    fitnessChecker: {
+      run: () => runArchitecturalFitnessChecks(),
+    },
     ticketRepo: new InMemoryTicketRepo(store),
     taskRepo: new InMemoryTaskRepo(store),
     attachmentRepo: new InMemoryAttachmentRepo(store),
