@@ -10,6 +10,7 @@ import type {
   VerticalSliceValidationDeps,
 } from "@/modules/shared-orchestration/application/vertical-slice-validation.service";
 import { randomUUID } from "node:crypto";
+import { runArchitecturalFitnessChecks } from "@/modules/shared-orchestration/infrastructure/architectural-fitness-checks.server";
 
 type TicketStatus = "open" | "assigned" | "resolved";
 type TaskStatus = "pending" | "done";
@@ -34,7 +35,23 @@ interface AttachmentRow {
   orgId: string;
   ownerType: "ticket" | "field_task";
   ownerId: string;
+  mimeType: string;
+  sizeBytes: number;
+  checksumSha256: string;
   status: string;
+}
+
+interface OutboxMessageRow {
+  messageId: string;
+  orgId: string;
+  aggregateType: string;
+  aggregateId: string;
+  eventName: string;
+  dedupeKey: string;
+  sequence: number;
+  status: "pending" | "delivered" | "failed";
+  attemptCount: number;
+  lastError?: string;
 }
 
 function cloneMap<K, V>(source: Map<K, V>, cloneValue?: (value: V) => V) {
@@ -52,6 +69,8 @@ class InMemoryValidationStore {
   ticketEvents: Array<Record<string, unknown>> = [];
   auditLogs: Array<Record<string, unknown>> = [];
   outboxKeys = new Set<string>();
+  outboxMessages = new Map<string, OutboxMessageRow>();
+  outboxSequence = 0;
   idempotency = new Map<string, { requestHash: string; response?: unknown }>();
 }
 
@@ -68,6 +87,8 @@ class InMemoryTransactionManager implements TransactionManager {
     const eventSnapshot = this.store.ticketEvents.slice();
     const auditSnapshot = this.store.auditLogs.slice();
     const outboxSnapshot = new Set(this.store.outboxKeys);
+    const outboxMessageSnapshot = cloneMap(this.store.outboxMessages, (v) => ({ ...v }));
+    const outboxSequenceSnapshot = this.store.outboxSequence;
 
     try {
       return await run({ requestId: randomUUID() });
@@ -78,6 +99,8 @@ class InMemoryTransactionManager implements TransactionManager {
       this.store.ticketEvents = eventSnapshot;
       this.store.auditLogs = auditSnapshot;
       this.store.outboxKeys = outboxSnapshot;
+      this.store.outboxMessages = outboxMessageSnapshot;
+      this.store.outboxSequence = outboxSequenceSnapshot;
       throw error;
     }
   }
@@ -142,7 +165,95 @@ class InMemoryOutbox implements DomainOutbox {
     }
 
     this.store.outboxKeys.add(key);
+    const messageId = randomUUID();
+    this.store.outboxSequence += 1;
+    this.store.outboxMessages.set(messageId, {
+      messageId,
+      orgId: input.orgId,
+      aggregateType: input.aggregateType,
+      aggregateId: input.aggregateId,
+      eventName: input.eventName,
+      dedupeKey: input.dedupeKey,
+      sequence: this.store.outboxSequence,
+      status: "pending",
+      attemptCount: 0,
+    });
     return true;
+  }
+
+  async peekPending(input: { orgId: string; limit: number }): Promise<
+    Array<{
+      messageId: string;
+      aggregateType: string;
+      aggregateId: string;
+      eventName: string;
+      dedupeKey: string;
+      sequence: number;
+      attemptCount: number;
+      status: "pending" | "failed";
+    }>
+  > {
+    return Array.from(this.store.outboxMessages.values())
+      .filter((row) => row.orgId === input.orgId && (row.status === "pending" || row.status === "failed"))
+      .sort((a, b) => a.sequence - b.sequence)
+      .slice(0, input.limit)
+      .map((row) => ({
+        messageId: row.messageId,
+        aggregateType: row.aggregateType,
+        aggregateId: row.aggregateId,
+        eventName: row.eventName,
+        dedupeKey: row.dedupeKey,
+        sequence: row.sequence,
+        attemptCount: row.attemptCount,
+        status: row.status === "failed" ? ("failed" as const) : ("pending" as const),
+      }));
+  }
+
+  async markDelivered(input: { messageId: string }) {
+    const row = this.store.outboxMessages.get(input.messageId);
+    if (!row) {
+      return;
+    }
+
+    this.store.outboxMessages.set(input.messageId, {
+      ...row,
+      status: "delivered",
+    });
+  }
+
+  async markFailed(input: { messageId: string; reason: string }) {
+    const row = this.store.outboxMessages.get(input.messageId);
+    if (!row) {
+      return;
+    }
+
+    this.store.outboxMessages.set(input.messageId, {
+      ...row,
+      status: "failed",
+      attemptCount: row.attemptCount + 1,
+      lastError: input.reason,
+    });
+  }
+
+  async retryFailed(input: { orgId: string; maxAttempts: number }) {
+    let retried = 0;
+    for (const [id, row] of this.store.outboxMessages.entries()) {
+      if (row.orgId !== input.orgId || row.status !== "failed") {
+        continue;
+      }
+
+      if (row.attemptCount >= input.maxAttempts) {
+        continue;
+      }
+
+      this.store.outboxMessages.set(id, {
+        ...row,
+        status: "pending",
+      });
+      retried += 1;
+    }
+
+    return retried;
   }
 }
 
@@ -266,13 +377,29 @@ class InMemoryAttachmentRepo implements SliceAttachmentRepositoryPort {
     storageProvider: string;
     storageKey: string;
   }) {
-    const ownerExists =
+    const ownerRow =
       input.ownerType === "ticket"
-        ? this.store.tickets.has(input.ownerId)
-        : this.store.tasks.has(input.ownerId);
+        ? this.store.tickets.get(input.ownerId)
+        : this.store.tasks.get(input.ownerId);
 
-    if (!ownerExists) {
+    if (!ownerRow) {
       throw new Error("ATTACHMENT_OWNER_INVALID: owner does not exist");
+    }
+
+    if (ownerRow.orgId !== input.orgId) {
+      throw new Error("ATTACHMENT_OWNERSHIP_BYPASS: owner belongs to another org");
+    }
+
+    if (!/^image\/(jpeg|png|webp)$|^application\/(pdf|octet-stream)$/.test(input.mimeType)) {
+      throw new Error("ATTACHMENT_MIME_REJECTED: mime type is not allowed");
+    }
+
+    if (!/^[a-f0-9]{64}$/i.test(input.checksumSha256)) {
+      throw new Error("ATTACHMENT_CHECKSUM_INVALID: checksum must be sha256");
+    }
+
+    if (input.sizeBytes <= 0 || input.sizeBytes > 20 * 1024 * 1024) {
+      throw new Error("ATTACHMENT_SIZE_INVALID: size must be between 1B and 20MB");
     }
 
     const attachmentId = randomUUID();
@@ -281,6 +408,9 @@ class InMemoryAttachmentRepo implements SliceAttachmentRepositoryPort {
       orgId: input.orgId,
       ownerType: input.ownerType,
       ownerId: input.ownerId,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        checksumSha256: input.checksumSha256,
       status: "uploaded",
     });
 
@@ -333,11 +463,27 @@ class InMemoryQueryValidator implements SliceQueryValidationPort {
 
 export function createInMemoryVerticalSliceValidationDeps(): VerticalSliceValidationDeps {
   const store = new InMemoryValidationStore();
+  const permissions: Record<string, Set<string>> = {
+    admin: new Set(["ticket.assign", "task.complete", "solution.publish", "attachment.register", "error.link", "installation.update"]),
+    dispatcher: new Set(["ticket.assign", "attachment.register", "error.link", "installation.update"]),
+    field_technician: new Set(["task.complete", "attachment.register", "installation.update"]),
+    support_engineer: new Set(["ticket.assign", "solution.publish", "attachment.register", "error.link"]),
+    knowledge_manager: new Set(["solution.publish", "attachment.register", "error.link"]),
+    viewer: new Set([]),
+  };
 
   return {
     txManager: new InMemoryTransactionManager(store),
     idempotencyStore: new InMemoryIdempotencyStore(store),
     outbox: new InMemoryOutbox(store),
+    authorization: {
+      canPerformAction(role, action) {
+        return permissions[role]?.has(action) ?? false;
+      },
+    },
+    fitnessChecker: {
+      run: () => runArchitecturalFitnessChecks(),
+    },
     ticketRepo: new InMemoryTicketRepo(store),
     taskRepo: new InMemoryTaskRepo(store),
     attachmentRepo: new InMemoryAttachmentRepo(store),
