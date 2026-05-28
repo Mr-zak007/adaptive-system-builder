@@ -90,7 +90,8 @@ export async function runArchitecturalFitnessChecks(): Promise<ArchitecturalFitn
         });
       }
 
-      if (!/\/application\//.test(relativePath) && /repository/i.test(importPath)) {
+      const isApplicationRepositoryImport = /^@\/modules\/[^/]+\/application\/.+repository$/.test(importPath);
+      if (!/\/application\//.test(relativePath) && isApplicationRepositoryImport) {
         repositoryLeakageViolations.push({
           rule: "repository-leakage",
           filePath: relativePath,
