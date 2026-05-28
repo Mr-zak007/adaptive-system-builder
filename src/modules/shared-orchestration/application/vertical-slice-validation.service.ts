@@ -9,6 +9,7 @@ import {
   type VerticalSliceValidationRequestDto,
   type VerticalSliceValidationResponseDto,
 } from "@/modules/shared-orchestration/contracts/vertical-slice-validation.contracts";
+import { runArchitecturalFitnessChecks } from "@/modules/shared-orchestration/infrastructure/architectural-fitness-checks.server";
 
 type ValidationStatus = "passed" | "failed" | "warning";
 
@@ -138,6 +139,13 @@ export async function runVerticalSliceValidation(
 
   const lifecycle: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
   const failureScenarios: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const concurrencyStressValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const eventOutboxStressValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const attachmentLifecycleValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const transactionBoundaryValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const observabilityValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const performanceValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const architecturalFitnessValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
   const repositoryAndDbValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
   const authorizationValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
   const dtoMappingValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
