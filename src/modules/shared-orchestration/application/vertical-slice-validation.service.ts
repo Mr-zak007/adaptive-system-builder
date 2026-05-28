@@ -1,5 +1,4 @@
 import { randomUUID, createHash } from "node:crypto";
-import { canRolePerformAction, type AppRole } from "@/modules/identity-access/application/authorization-matrix";
 import type { TransactionManager } from "@/shared/application/transaction-manager";
 import type { IdempotencyStore } from "@/shared/application/idempotency-store";
 import type { DomainOutbox } from "@/shared/application/domain-outbox";
@@ -9,7 +8,14 @@ import {
   type VerticalSliceValidationRequestDto,
   type VerticalSliceValidationResponseDto,
 } from "@/modules/shared-orchestration/contracts/vertical-slice-validation.contracts";
-import { runArchitecturalFitnessChecks } from "@/modules/shared-orchestration/infrastructure/architectural-fitness-checks.server";
+
+type AuthorizationAction =
+  | "ticket.assign"
+  | "task.complete"
+  | "solution.publish"
+  | "attachment.register"
+  | "error.link"
+  | "installation.update";
 
 type ValidationStatus = "passed" | "failed" | "warning";
 
@@ -105,6 +111,18 @@ export interface VerticalSliceValidationDeps {
   txManager: TransactionManager;
   idempotencyStore: IdempotencyStore;
   outbox: DomainOutbox;
+  authorization: {
+    canPerformAction(role: VerticalSliceValidationRequestDto["actorRole"], action: AuthorizationAction): boolean;
+  };
+  fitnessChecker: {
+    run(): Promise<{
+      crossModuleImportViolations: Array<Record<string, string>>;
+      repositoryLeakageViolations: Array<Record<string, string>>;
+      dtoViolations: Array<Record<string, string>>;
+      domainBypassViolations: Array<Record<string, string>>;
+      directDbAccessViolations: Array<Record<string, string>>;
+    }>;
+  };
   ticketRepo: SliceTicketRepositoryPort;
   taskRepo: SliceFieldTaskRepositoryPort;
   attachmentRepo: SliceAttachmentRepositoryPort;
@@ -161,8 +179,8 @@ export async function runVerticalSliceValidation(
     });
   };
 
-  const enforcePermission = (role: AppRole, action: Parameters<typeof canRolePerformAction>[1]) => {
-    if (!canRolePerformAction(role, action)) {
+  const enforcePermission = (role: VerticalSliceValidationRequestDto["actorRole"], action: AuthorizationAction) => {
+    if (!deps.authorization.canPerformAction(role, action)) {
       errorClasses.add("FORBIDDEN");
       throw new Error(`FORBIDDEN:${action}`);
     }
