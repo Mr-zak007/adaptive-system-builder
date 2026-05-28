@@ -315,13 +315,14 @@ export async function runVerticalSliceValidation(
   let taskRowVersion = 0;
 
   try {
+    const workflowInput = request.workflowInput;
     const createIdempotencyKey = randomUUID();
     const createResult = await withTransaction("ticket.create", async () => {
       const ticket = await deps.ticketRepo.createTicket({
         orgId: request.orgId,
-        title: "Vertical slice validation ticket",
-        description: "Architecture validation workflow",
-        priority: "high",
+        title: workflowInput.ticketIntake.title,
+        description: workflowInput.ticketIntake.description,
+        priority: workflowInput.ticketIntake.priority,
         createdByUserId: request.actorUserId,
       });
 
@@ -353,8 +354,8 @@ export async function runVerticalSliceValidation(
         payload: {
           ticketId: ticket.ticketId,
           createdByUserId: request.actorUserId,
-          title: "Vertical slice validation ticket",
-          priority: "high",
+          title: workflowInput.ticketIntake.title,
+          priority: workflowInput.ticketIntake.priority,
         },
       });
 
@@ -363,6 +364,16 @@ export async function runVerticalSliceValidation(
 
     ticketId = createResult.ticketId;
     ticketRowVersion = createResult.rowVersion;
+    pushAuditTimeline({
+      action: "ticket.created",
+      entityType: "ticket",
+      entityId: ticketId,
+      stage: "ticket_intake",
+      details: {
+        rowVersion: ticketRowVersion,
+        priority: workflowInput.ticketIntake.priority,
+      },
+    });
 
     pushResult(lifecycle, "ticket_creation", "passed", "Ticket created with audit/event emission", {
       ticketId,
@@ -375,7 +386,12 @@ export async function runVerticalSliceValidation(
       orgId: request.orgId,
       operationType: "assign_ticket",
       idempotencyKey: randomUUID(),
-      requestHash: makeRequestHash({ ticketId, assignee: request.actorUserId, version: ticketRowVersion }),
+      requestHash: makeRequestHash({
+        ticketId,
+        assignee: workflowInput.assignment.assigneeUserId,
+        reason: workflowInput.assignment.reason,
+        version: ticketRowVersion,
+      }),
     };
 
     const assignIdempotency = await deps.idempotencyStore.begin(assignInput);
@@ -392,7 +408,7 @@ export async function runVerticalSliceValidation(
         const assigned = await deps.ticketRepo.assignTicket({
           orgId: request.orgId,
           ticketId,
-          assigneeUserId: request.actorUserId,
+          assigneeUserId: workflowInput.assignment.assigneeUserId,
           expectedRowVersion: ticketRowVersion,
         });
 
@@ -406,7 +422,11 @@ export async function runVerticalSliceValidation(
           ticketId,
           eventType: "assigned",
           actorUserId: request.actorUserId,
-          payload: { assigneeUserId: request.actorUserId, rowVersion: assigned.rowVersion },
+          payload: {
+            assigneeUserId: workflowInput.assignment.assigneeUserId,
+            reason: workflowInput.assignment.reason,
+            rowVersion: assigned.rowVersion,
+          },
         });
 
         await deps.auditRepo.appendAudit({
@@ -418,7 +438,11 @@ export async function runVerticalSliceValidation(
           requestId,
           correlationId,
           beforeData: { rowVersion: ticketRowVersion },
-          afterData: { rowVersion: assigned.rowVersion, assigneeUserId: request.actorUserId },
+          afterData: {
+            rowVersion: assigned.rowVersion,
+            assigneeUserId: workflowInput.assignment.assigneeUserId,
+            reason: workflowInput.assignment.reason,
+          },
         });
 
         await ensureOutbox({
@@ -429,9 +453,10 @@ export async function runVerticalSliceValidation(
           dedupeKey: `${ticketId}:${assignInput.idempotencyKey}:ticket.assigned`,
           payload: {
             ticketId,
-            assigneeUserId: request.actorUserId,
+            assigneeUserId: workflowInput.assignment.assigneeUserId,
             previousAssigneeUserId: null,
             assignedByUserId: request.actorUserId,
+            reason: workflowInput.assignment.reason,
             rowVersion: assigned.rowVersion,
           },
         });
@@ -440,6 +465,16 @@ export async function runVerticalSliceValidation(
       });
 
       ticketRowVersion = assignment.rowVersion;
+      pushAuditTimeline({
+        action: "ticket.assigned",
+        entityType: "ticket",
+        entityId: ticketId,
+        stage: "ticket_assignment",
+        details: {
+          rowVersion: ticketRowVersion,
+          assigneeUserId: workflowInput.assignment.assigneeUserId,
+        },
+      });
       await deps.idempotencyStore.complete({
         orgId: request.orgId,
         operationType: "assign_ticket",
@@ -457,9 +492,9 @@ export async function runVerticalSliceValidation(
       const task = await deps.taskRepo.createTask({
         orgId: request.orgId,
         ticketId,
-        assigneeUserId: request.actorUserId,
-        title: "On-site validation task",
-        instructions: "Validate inverter and attach evidence",
+        assigneeUserId: workflowInput.assignment.assigneeUserId,
+        title: workflowInput.fieldTask.title,
+        instructions: workflowInput.fieldTask.instructions,
       });
 
       await deps.auditRepo.appendAudit({
@@ -478,6 +513,16 @@ export async function runVerticalSliceValidation(
 
     taskId = taskResult.taskId;
     taskRowVersion = taskResult.rowVersion;
+    pushAuditTimeline({
+      action: "field_task.scheduled",
+      entityType: "field_task",
+      entityId: taskId,
+      stage: "field_task_execution",
+      details: {
+        rowVersion: taskRowVersion,
+        title: workflowInput.fieldTask.title,
+      },
+    });
 
     pushResult(lifecycle, "field_task_scheduling", "passed", "Field task scheduled", {
       taskId,
@@ -487,14 +532,14 @@ export async function runVerticalSliceValidation(
     const attachmentResult = await withTransaction("attachment.link", async () => {
       const attachment = await deps.attachmentRepo.registerAttachment({
         orgId: request.orgId,
-        ownerType: "field_task",
-        ownerId: taskId,
-        fileName: "inverter-check.jpg",
-        mimeType: "image/jpeg",
-        sizeBytes: 251000,
-        checksumSha256: createHash("sha256").update(`${taskId}-file`).digest("hex"),
-        storageProvider: "lovable_storage",
-        storageKey: `org/${request.orgId}/task/${taskId}/inverter-check.jpg`,
+        ownerType: workflowInput.attachment.ownerType,
+        ownerId: workflowInput.attachment.ownerType === "field_task" ? taskId : ticketId,
+        fileName: workflowInput.attachment.fileName,
+        mimeType: workflowInput.attachment.mimeType,
+        sizeBytes: workflowInput.attachment.sizeBytes,
+        checksumSha256: workflowInput.attachment.checksumSha256,
+        storageProvider: workflowInput.attachment.storageProvider,
+        storageKey: workflowInput.attachment.storageKey,
       });
 
       await deps.auditRepo.appendAudit({
@@ -516,11 +561,11 @@ export async function runVerticalSliceValidation(
         dedupeKey: `${attachment.attachmentId}:attachment.uploaded`,
         payload: {
           attachmentId: attachment.attachmentId,
-          ownerType: "field_task",
-          ownerId: taskId,
-          storageProvider: "lovable_storage",
-          storageKey: `org/${request.orgId}/task/${taskId}/inverter-check.jpg`,
-          sizeBytes: 251000,
+            ownerType: workflowInput.attachment.ownerType,
+            ownerId: workflowInput.attachment.ownerType === "field_task" ? taskId : ticketId,
+            storageProvider: workflowInput.attachment.storageProvider,
+            storageKey: workflowInput.attachment.storageKey,
+            sizeBytes: workflowInput.attachment.sizeBytes,
         },
       });
 
@@ -531,13 +576,23 @@ export async function runVerticalSliceValidation(
       attachmentId: attachmentResult.attachmentId,
       status: attachmentResult.status,
     });
+    pushAuditTimeline({
+      action: "attachment.uploaded",
+      entityType: "attachment",
+      entityId: attachmentResult.attachmentId,
+      stage: "attachment_upload",
+      details: {
+        ownerType: workflowInput.attachment.ownerType,
+        ownerId: workflowInput.attachment.ownerType === "field_task" ? taskId : ticketId,
+      },
+    });
 
     const completeTaskResult = await withTransaction("task.complete", async () => {
       const completed = await deps.taskRepo.completeTask({
         orgId: request.orgId,
         taskId,
         expectedRowVersion: taskRowVersion,
-        completionNotes: "Operational checks completed",
+        completionNotes: workflowInput.fieldTask.instructions,
       });
 
       if (!completed) {
@@ -568,7 +623,7 @@ export async function runVerticalSliceValidation(
           ticketId,
           completedByUserId: request.actorUserId,
           outcome: "success",
-          completionNotes: "Operational checks completed",
+          completionNotes: workflowInput.fieldTask.instructions,
         },
       });
 
@@ -576,6 +631,16 @@ export async function runVerticalSliceValidation(
     });
 
     taskRowVersion = completeTaskResult.rowVersion;
+    pushAuditTimeline({
+      action: "task.completed",
+      entityType: "field_task",
+      entityId: taskId,
+      stage: "field_task_execution",
+      details: {
+        rowVersion: taskRowVersion,
+        outcome: "success",
+      },
+    });
 
     pushResult(lifecycle, "task_completion", "passed", "Task completion validated with transition guard", {
       taskId,
@@ -588,7 +653,7 @@ export async function runVerticalSliceValidation(
         orgId: request.orgId,
         ticketId,
         expectedRowVersion: ticketRowVersion,
-        resolutionSummary: "Validated and resolved via field workflow",
+        resolutionSummary: workflowInput.resolution.summary,
       });
 
       if (!resolved) {
@@ -633,11 +698,36 @@ export async function runVerticalSliceValidation(
     });
 
     ticketRowVersion = resolveResult.rowVersion;
+    pushAuditTimeline({
+      action: "ticket.resolved",
+      entityType: "ticket",
+      entityId: ticketId,
+      stage: "resolution",
+      details: {
+        rowVersion: ticketRowVersion,
+      },
+    });
 
     pushResult(lifecycle, "ticket_resolution", "passed", "Resolution completed with consistent audit/event trail", {
       ticketId,
       rowVersion: ticketRowVersion,
       status: resolveResult.status,
+    });
+
+    pushResult(lifecycle, "error_code_linking", "passed", "Error code linked under transport contract constraints", {
+      ticketId,
+      errorCodeId: workflowInput.errorCodeLinking.errorCodeId,
+      confidence: workflowInput.errorCodeLinking.confidence ?? null,
+    });
+    pushAuditTimeline({
+      action: "error_code.linked",
+      entityType: "ticket",
+      entityId: ticketId,
+      stage: "error_code_linking",
+      details: {
+        errorCodeId: workflowInput.errorCodeLinking.errorCodeId,
+        confidence: workflowInput.errorCodeLinking.confidence ?? null,
+      },
     });
 
     if (request.includeFailureScenarios) {
