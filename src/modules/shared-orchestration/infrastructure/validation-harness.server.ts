@@ -176,7 +176,18 @@ class InMemoryOutbox implements DomainOutbox {
     return true;
   }
 
-  async peekPending(input: { orgId: string; limit: number }) {
+  async peekPending(input: { orgId: string; limit: number }): Promise<
+    Array<{
+      messageId: string;
+      aggregateType: string;
+      aggregateId: string;
+      eventName: string;
+      dedupeKey: string;
+      sequence: number;
+      attemptCount: number;
+      status: "pending" | "failed";
+    }>
+  > {
     return Array.from(this.store.outboxMessages.values())
       .filter((row) => row.orgId === input.orgId && (row.status === "pending" || row.status === "failed"))
       .sort((a, b) => a.sequence - b.sequence)
@@ -189,7 +200,7 @@ class InMemoryOutbox implements DomainOutbox {
         dedupeKey: row.dedupeKey,
         sequence: row.sequence,
         attemptCount: row.attemptCount,
-        status: row.status === "failed" ? "failed" : "pending",
+        status: row.status === "failed" ? ("failed" as const) : ("pending" as const),
       }));
   }
 
