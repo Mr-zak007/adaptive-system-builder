@@ -13,6 +13,8 @@ export interface ArchitecturalFitnessSummary {
   dtoViolations: ArchitecturalFitnessFinding[];
   domainBypassViolations: ArchitecturalFitnessFinding[];
   directDbAccessViolations: ArchitecturalFitnessFinding[];
+  forbiddenImportViolations: ArchitecturalFitnessFinding[];
+  eventContractDriftViolations: ArchitecturalFitnessFinding[];
 }
 
 async function listTsFiles(dirPath: string): Promise<string[]> {
@@ -59,6 +61,10 @@ export async function runArchitecturalFitnessChecks(): Promise<ArchitecturalFitn
   const dtoViolations: ArchitecturalFitnessFinding[] = [];
   const domainBypassViolations: ArchitecturalFitnessFinding[] = [];
   const directDbAccessViolations: ArchitecturalFitnessFinding[] = [];
+  const forbiddenImportViolations: ArchitecturalFitnessFinding[] = [];
+  const eventContractDriftViolations: ArchitecturalFitnessFinding[] = [];
+
+  const forbiddenImports = ["react-router-dom", "typeorm", "@prisma/client"];
 
   for (const absolutePath of files) {
     const relativePath = toProjectRelative(absolutePath);
@@ -116,6 +122,35 @@ export async function runArchitecturalFitnessChecks(): Promise<ArchitecturalFitn
           details: `Direct DB access import outside infrastructure: ${importPath}`,
         });
       }
+
+      if (forbiddenImports.includes(importPath)) {
+        forbiddenImportViolations.push({
+          rule: "forbidden-imports",
+          filePath: relativePath,
+          details: `Forbidden runtime import detected: ${importPath}`,
+        });
+      }
+    }
+  }
+
+  const eventSourceFile = "/dev-server/src/modules/shared-orchestration/application/vertical-slice-validation.service.ts";
+  const eventContractFile = "/dev-server/src/shared/contracts/events/domain-events.ts";
+  const [eventSource, eventContracts] = await Promise.all([
+    readFile(eventSourceFile, "utf-8"),
+    readFile(eventContractFile, "utf-8"),
+  ]);
+
+  const emittedEvents = Array.from(eventSource.matchAll(/eventName:\s*"([a-z_]+\.[a-z_]+)"/gi)).map((m) => m[1]);
+  const contractEvents = Array.from(eventContracts.matchAll(/eventName:\s*z\.literal\("([a-z_]+\.[a-z_]+)"\)/gi)).map((m) => m[1]);
+
+  const contractSet = new Set(contractEvents);
+  for (const emitted of emittedEvents) {
+    if (!contractSet.has(emitted)) {
+      eventContractDriftViolations.push({
+        rule: "event-contract-drift",
+        filePath: "src/modules/shared-orchestration/application/vertical-slice-validation.service.ts",
+        details: `Emitted event not present in event contract registry: ${emitted}`,
+      });
     }
   }
 
@@ -125,5 +160,7 @@ export async function runArchitecturalFitnessChecks(): Promise<ArchitecturalFitn
     dtoViolations,
     domainBypassViolations,
     directDbAccessViolations,
+    forbiddenImportViolations,
+    eventContractDriftViolations,
   };
 }
