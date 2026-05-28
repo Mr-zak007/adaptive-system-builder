@@ -131,6 +131,49 @@ export interface VerticalSliceValidationDeps {
       notes: string[];
     }>;
   };
+  repositoryAdapterValidator: {
+    validate(): Promise<{
+      boundariesRespected: boolean;
+      noHiddenOrmLeakage: boolean;
+      transactionsRespected: boolean;
+      deterministicPagination: boolean;
+      stableFiltering: boolean;
+      notes: string[];
+    }>;
+  };
+  outboxInfrastructure: {
+    validateReplaySafety(input: { orgId: string; dedupeKey: string }): Promise<{ replayBlocked: boolean; notes: string[] }>;
+    processBatch(input: {
+      orgId: string;
+      limit: number;
+      policy: { baseDelayMs: number; maxDelayMs: number; jitterRatio: number; deadLetterAfterAttempts: number };
+      deliver: (message: {
+        messageId: string;
+        aggregateType: string;
+        aggregateId: string;
+        eventName: string;
+        dedupeKey: string;
+        sequence: number;
+        attemptCount: number;
+      }) => Promise<"ok" | "retryable_error" | "poison">;
+    }): Promise<{ delivered: number; failed: number; deadLettered: number }>;
+  };
+  storageProvider: {
+    createSignedUploadUrl(input: {
+      orgId: string;
+      ownerType: "ticket" | "field_task" | "solution" | "installation_project" | "knowledge_article" | "procedure";
+      ownerId: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+      checksumSha256: string;
+    }): Promise<{ storageKey: string; expiresAt: string }>;
+    reconcileOrphans(input: {
+      orgId: string;
+      existingAttachmentKeys: string[];
+      maxDelete: number;
+    }): Promise<{ deletedKeys: string[]; notes: string[] }>;
+  };
   authorization: {
     canPerformAction(role: VerticalSliceValidationRequestDto["actorRole"], action: AuthorizationAction): boolean;
   };
