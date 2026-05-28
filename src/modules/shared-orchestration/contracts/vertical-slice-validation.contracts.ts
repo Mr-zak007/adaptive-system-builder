@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[];
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 export const verticalSliceValidationRequestSchema = z.object({
   orgId: z.string().uuid(),
   actorUserId: z.string().uuid(),
@@ -18,7 +31,7 @@ export const scenarioResultSchema = z.object({
   scenario: z.string().min(1).max(120),
   status: z.enum(["passed", "failed", "warning"]),
   message: z.string().min(1).max(500),
-  evidence: z.record(z.string(), z.unknown()).default({}),
+  evidence: z.record(z.string(), jsonValueSchema).default({}),
 });
 
 export const verticalSliceValidationResponseSchema = z.object({
