@@ -1307,6 +1307,32 @@ export async function runVerticalSliceValidation(
       { p95Ms: attachmentPerf.p95Ms, notes: attachmentPerf.notes },
     );
 
+    const repositoryAdapterValidation = await deps.repositoryAdapterValidator.validate();
+    pushResult(
+      repositoryAndDbValidation,
+      "repository_adapter_boundaries",
+      repositoryAdapterValidation.boundariesRespected &&
+          repositoryAdapterValidation.noHiddenOrmLeakage &&
+          repositoryAdapterValidation.transactionsRespected
+        ? "passed"
+        : "failed",
+      repositoryAdapterValidation.boundariesRespected &&
+          repositoryAdapterValidation.noHiddenOrmLeakage &&
+          repositoryAdapterValidation.transactionsRespected
+        ? "Repository adapter boundaries respected with transaction discipline and no hidden ORM leakage."
+        : "Repository adapter boundary checks failed.",
+      { notes: repositoryAdapterValidation.notes },
+    );
+    pushResult(
+      repositoryAndDbValidation,
+      "repository_adapter_pagination_filtering",
+      repositoryAdapterValidation.deterministicPagination && repositoryAdapterValidation.stableFiltering ? "passed" : "failed",
+      repositoryAdapterValidation.deterministicPagination && repositoryAdapterValidation.stableFiltering
+        ? "Repository pagination/filtering contracts are deterministic and tenant-safe."
+        : "Repository pagination/filtering contracts are unstable.",
+      { notes: repositoryAdapterValidation.notes },
+    );
+
     pushResult(
       dtoMappingValidation,
       "no_db_model_leakage",
