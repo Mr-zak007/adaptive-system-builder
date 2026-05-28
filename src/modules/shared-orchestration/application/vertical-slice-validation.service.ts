@@ -1012,7 +1012,7 @@ export async function runVerticalSliceValidation(
       },
     );
 
-    const fitness = await runArchitecturalFitnessChecks();
+    const fitness = await deps.fitnessChecker.run();
     const violationTotal =
       fitness.crossModuleImportViolations.length +
       fitness.repositoryLeakageViolations.length +
@@ -1046,7 +1046,7 @@ export async function runVerticalSliceValidation(
       },
     );
 
-    const roleForbidden = canRolePerformAction("field_technician", "ticket.assign");
+    const roleForbidden = deps.authorization.canPerformAction("field_technician", "ticket.assign");
     if (!roleForbidden) {
       pushResult(authorizationValidation, "field_technician_boundary", "passed", "Field technician cannot assign tickets", {});
     } else {
@@ -1058,7 +1058,7 @@ export async function runVerticalSliceValidation(
       status: "pending_real_db_assertion",
     });
 
-    const privilegeEscalationAttempt = canRolePerformAction("viewer", "solution.publish");
+    const privilegeEscalationAttempt = deps.authorization.canPerformAction("viewer", "solution.publish");
     pushResult(
       authorizationValidation,
       "privilege_escalation_attempt",
