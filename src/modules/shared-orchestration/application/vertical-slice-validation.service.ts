@@ -550,7 +550,11 @@ export async function runVerticalSliceValidation(
         entityId: attachment.attachmentId,
         requestId,
         correlationId,
-        afterData: { ownerType: "field_task", ownerId: taskId, status: attachment.status },
+        afterData: {
+          ownerType: workflowInput.attachment.ownerType,
+          ownerId: workflowInput.attachment.ownerType === "field_task" ? taskId : ticketId,
+          status: attachment.status,
+        },
       });
 
       await ensureOutbox({
@@ -1474,6 +1478,14 @@ export async function runVerticalSliceValidation(
     const message = error instanceof Error ? error.message : "unknown_error";
     const classification = message.split(":")[0] || "INTERNAL_ERROR";
     errorClasses.add(classification);
+    pushAuditTimeline({
+      action: "workflow.failed",
+      entityType: "workflow",
+      entityId: ticketId || "unknown",
+      stage: "resolution",
+      status: "failed",
+      details: { error: message },
+    });
     log({
       level: "error",
       code: classification,
@@ -1534,6 +1546,7 @@ export async function runVerticalSliceValidation(
     repositoryAndDbValidation,
     authorizationValidation,
     dtoMappingValidation,
+    auditTimeline,
     architecturalReview: {
       currentRisks: [
         "DB-backed SQL/RLS assertions still need runtime adapter execution against managed database in CI.",
