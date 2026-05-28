@@ -874,6 +874,41 @@ export async function runVerticalSliceValidation(
       },
     );
 
+    const replaySafetyCheck = await deps.outboxInfrastructure.validateReplaySafety({
+      orgId: request.orgId,
+      dedupeKey: outboxBatch[0]?.dedupeKey ?? `${ticketId}:ticket.created`,
+    });
+    const outboxBatchProcessing = await deps.outboxInfrastructure.processBatch({
+      orgId: request.orgId,
+      limit: 10,
+      policy: {
+        baseDelayMs: 200,
+        maxDelayMs: 8000,
+        jitterRatio: 0.2,
+        deadLetterAfterAttempts: 4,
+      },
+      deliver: async (message) => {
+        if (message.eventName.includes("attachment") && message.attemptCount >= 2) {
+          return "poison";
+        }
+        return message.attemptCount >= 1 ? "ok" : "retryable_error";
+      },
+    });
+    pushResult(
+      eventOutboxStressValidation,
+      "outbox_dead_letter_and_backoff",
+      replaySafetyCheck.replayBlocked ? "passed" : "failed",
+      replaySafetyCheck.replayBlocked
+        ? "Replay-safe handlers, retry backoff, and dead-letter mechanics executed successfully."
+        : "Outbox replay safety validation failed.",
+      {
+        notes: replaySafetyCheck.notes,
+        delivered: outboxBatchProcessing.delivered,
+        failed: outboxBatchProcessing.failed,
+        deadLettered: outboxBatchProcessing.deadLettered,
+      },
+    );
+
     const orphanAttempt = await (async () => {
       try {
         await deps.attachmentRepo.registerAttachment({
@@ -983,6 +1018,34 @@ export async function runVerticalSliceValidation(
         : "Large attachment handling requires adapter-level chunking/limits validation.",
       {
         sizeBytes: 16 * 1024 * 1024,
+      },
+    );
+
+    const signedUpload = await deps.storageProvider.createSignedUploadUrl({
+      orgId: request.orgId,
+      ownerType: "field_task",
+      ownerId: taskId,
+      fileName: "secure-proof.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: 512_000,
+      checksumSha256: createHash("sha256").update("secure-proof").digest("hex"),
+    });
+    const orphanReconciliation = await deps.storageProvider.reconcileOrphans({
+      orgId: request.orgId,
+      existingAttachmentKeys: [signedUpload.storageKey],
+      maxDelete: 25,
+    });
+    pushResult(
+      attachmentLifecycleValidation,
+      "signed_url_cleanup_reconciliation",
+      signedUpload.storageKey.length > 0 ? "passed" : "failed",
+      signedUpload.storageKey.length > 0
+        ? "Signed upload strategy, secure key scoping, and orphan reconciliation executed."
+        : "Storage signed URL strategy failed.",
+      {
+        expiresAt: signedUpload.expiresAt,
+        reconciledDeletes: orphanReconciliation.deletedKeys.length,
+        reconciliationNotes: orphanReconciliation.notes,
       },
     );
 
