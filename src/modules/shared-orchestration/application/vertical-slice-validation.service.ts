@@ -4,6 +4,7 @@ import type { TransactionManager } from "@/shared/application/transaction-manage
 import type { IdempotencyStore } from "@/shared/application/idempotency-store";
 import type { DomainOutbox } from "@/shared/application/domain-outbox";
 import {
+  type JsonValue,
   verticalSliceValidationResponseSchema,
   type VerticalSliceValidationRequestDto,
   type VerticalSliceValidationResponseDto,
@@ -115,11 +116,11 @@ function makeRequestHash(input: Record<string, unknown>) {
 }
 
 function pushResult(
-  bucket: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, unknown> }>,
+  bucket: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }>,
   scenario: string,
   status: ValidationStatus,
   message: string,
-  evidence: Record<string, unknown> = {},
+  evidence: Record<string, JsonValue> = {},
 ) {
   bucket.push({ scenario, status, message, evidence });
 }
@@ -135,11 +136,11 @@ export async function runVerticalSliceValidation(
   let eventTraceCount = 0;
   const errorClasses = new Set<string>();
 
-  const lifecycle: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, unknown> }> = [];
-  const failureScenarios: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, unknown> }> = [];
-  const repositoryAndDbValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, unknown> }> = [];
-  const authorizationValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, unknown> }> = [];
-  const dtoMappingValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, unknown> }> = [];
+  const lifecycle: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const failureScenarios: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const repositoryAndDbValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const authorizationValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const dtoMappingValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
 
   const log = (entry: Omit<ValidationLog, "requestId" | "correlationId">) => {
     logs.push({
