@@ -40,6 +40,41 @@ Validate real architectural correctness with one end-to-end workflow before broa
 - `ticket_events` history is immutable and complete for transitions.
 - No repository crosses bounded context ownership.
 
+## Stress validation extensions (v1.1)
+
+- **Concurrency stress**
+  - simultaneous assignment attempts
+  - concurrent task updates
+  - repeated retries with duplicate idempotency keys
+  - stale `row_version` conflict pressure
+  - expected behavior: optimistic concurrency rejects stale writers (no hidden overwrites)
+
+- **Event/Outbox stress**
+  - duplicate replay prevention
+  - delayed processing + partial delivery simulation
+  - retry storm simulation with bounded retries
+  - ordering guarantee check via monotonic outbox sequence
+  - expected behavior: side effects do not duplicate, state remains consistent
+
+- **Attachment lifecycle stress**
+  - orphan prevention
+  - failed upload rejection before persistence
+  - MIME spoofing rejection
+  - checksum format validation
+  - large-attachment guardrails
+
+- **Transaction boundaries (explicit)**
+  - start: command/use-case boundary
+  - inside transaction only: aggregate write, immutable event append, audit append, outbox enqueue
+  - outside transaction (async): outbox delivery, retries, external side effects
+
+- **Architectural fitness automation**
+  - cross-module import boundary checks
+  - repository leakage checks
+  - DTO/transport boundary checks
+  - domain bypass checks
+  - direct DB access outside infrastructure checks
+
 ## Out of scope for this slice
 
 - dashboards/UI
