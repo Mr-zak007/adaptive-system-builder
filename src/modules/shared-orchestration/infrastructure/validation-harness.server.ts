@@ -11,6 +11,8 @@ import type {
 } from "@/modules/shared-orchestration/application/vertical-slice-validation.service";
 import { randomUUID } from "node:crypto";
 import { runArchitecturalFitnessChecks } from "@/modules/shared-orchestration/infrastructure/architectural-fitness-checks.server";
+import { InMemoryAuthorizationCache } from "@/shared/infrastructure/cache/authorization-cache.server";
+import { MigrationBackedRlsPolicyValidator } from "@/shared/infrastructure/db/rls-policy-validator.server";
 
 type TicketStatus = "open" | "assigned" | "resolved";
 type TaskStatus = "pending" | "done";
@@ -476,6 +478,10 @@ export function createInMemoryVerticalSliceValidationDeps(): VerticalSliceValida
     txManager: new InMemoryTransactionManager(store),
     idempotencyStore: new InMemoryIdempotencyStore(store),
     outbox: new InMemoryOutbox(store),
+    authCache: new InMemoryAuthorizationCache({ ttlMs: 30_000 }),
+    rlsPolicyValidator: new MigrationBackedRlsPolicyValidator(
+      "/dev-server/db/migrations/20260528173000_infrastructure_hardening_rls_and_policy_gates_v1.sql",
+    ),
     authorization: {
       canPerformAction(role, action) {
         return permissions[role]?.has(action) ?? false;
