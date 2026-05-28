@@ -43,7 +43,13 @@ export function AsyncStateBanner({
         <p>{errorMessage ?? "Operation failed. Please retry."}</p>
       </div>
       {onRetry ? (
-        <Button type="button" variant="outline" size="sm" onClick={onRetry} className="h-11 min-w-11">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onRetry}
+          className="h-11 min-w-11"
+        >
           <RefreshCw className="size-4" aria-hidden="true" />
           {retryLabel}
         </Button>

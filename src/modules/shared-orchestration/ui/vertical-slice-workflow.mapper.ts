@@ -27,7 +27,9 @@ export const workflowFormDefaults: WorkflowFormModel = {
   errorSource: "field_diagnostics",
 };
 
-export function mapWorkflowFormToRequest(input: WorkflowFormModel): VerticalSliceValidationRequestDto {
+export function mapWorkflowFormToRequest(
+  input: WorkflowFormModel,
+): VerticalSliceValidationRequestDto {
   return {
     orgId: input.orgId,
     actorUserId: input.actorUserId,

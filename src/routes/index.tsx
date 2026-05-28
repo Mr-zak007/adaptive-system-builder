@@ -5,9 +5,15 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Operational Workflow Validation" },
-      { name: "description", content: "Minimal workflow-first operational UI for ticket lifecycle validation." },
+      {
+        name: "description",
+        content: "Minimal workflow-first operational UI for ticket lifecycle validation.",
+      },
       { property: "og:title", content: "Operational Workflow Validation" },
-      { property: "og:description", content: "Minimal workflow-first operational UI for ticket lifecycle validation." },
+      {
+        property: "og:description",
+        content: "Minimal workflow-first operational UI for ticket lifecycle validation.",
+      },
     ],
   }),
   component: Index,

@@ -7,7 +7,14 @@ import {
 export const workflowFormSchema = z.object({
   orgId: z.string().uuid(),
   actorUserId: z.string().uuid(),
-  actorRole: z.enum(["admin", "dispatcher", "field_technician", "support_engineer", "knowledge_manager", "viewer"]),
+  actorRole: z.enum([
+    "admin",
+    "dispatcher",
+    "field_technician",
+    "support_engineer",
+    "knowledge_manager",
+    "viewer",
+  ]),
   includeFailureScenarios: z.boolean(),
   stressLevel: z.enum(["baseline", "intensive"]),
   ticketTitle: z.string().trim().min(3).max(200),

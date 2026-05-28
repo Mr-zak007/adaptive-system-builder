@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-export type JsonValue = string | number | boolean | null | { [key: string]: JsonValue } | JsonValue[];
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: JsonValue }
+  | JsonValue[];
 
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
@@ -131,5 +137,9 @@ export const verticalSliceValidationResponseSchema = z.object({
   }),
 });
 
-export type VerticalSliceValidationRequestDto = z.infer<typeof verticalSliceValidationRequestSchema>;
-export type VerticalSliceValidationResponseDto = z.infer<typeof verticalSliceValidationResponseSchema>;
+export type VerticalSliceValidationRequestDto = z.infer<
+  typeof verticalSliceValidationRequestSchema
+>;
+export type VerticalSliceValidationResponseDto = z.infer<
+  typeof verticalSliceValidationResponseSchema
+>;
