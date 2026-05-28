@@ -37,6 +37,18 @@ interface AttachmentRow {
   status: string;
 }
 
+interface OutboxMessageRow {
+  messageId: string;
+  orgId: string;
+  aggregateType: string;
+  aggregateId: string;
+  eventName: string;
+  dedupeKey: string;
+  sequence: number;
+  status: "pending" | "delivered" | "failed";
+  attemptCount: number;
+}
+
 function cloneMap<K, V>(source: Map<K, V>, cloneValue?: (value: V) => V) {
   const next = new Map<K, V>();
   for (const [key, value] of source.entries()) {
@@ -52,6 +64,8 @@ class InMemoryValidationStore {
   ticketEvents: Array<Record<string, unknown>> = [];
   auditLogs: Array<Record<string, unknown>> = [];
   outboxKeys = new Set<string>();
+  outboxMessages = new Map<string, OutboxMessageRow>();
+  outboxSequence = 0;
   idempotency = new Map<string, { requestHash: string; response?: unknown }>();
 }
 
@@ -68,6 +82,8 @@ class InMemoryTransactionManager implements TransactionManager {
     const eventSnapshot = this.store.ticketEvents.slice();
     const auditSnapshot = this.store.auditLogs.slice();
     const outboxSnapshot = new Set(this.store.outboxKeys);
+    const outboxMessageSnapshot = cloneMap(this.store.outboxMessages, (v) => ({ ...v }));
+    const outboxSequenceSnapshot = this.store.outboxSequence;
 
     try {
       return await run({ requestId: randomUUID() });
@@ -78,6 +94,8 @@ class InMemoryTransactionManager implements TransactionManager {
       this.store.ticketEvents = eventSnapshot;
       this.store.auditLogs = auditSnapshot;
       this.store.outboxKeys = outboxSnapshot;
+      this.store.outboxMessages = outboxMessageSnapshot;
+      this.store.outboxSequence = outboxSequenceSnapshot;
       throw error;
     }
   }
@@ -142,7 +160,83 @@ class InMemoryOutbox implements DomainOutbox {
     }
 
     this.store.outboxKeys.add(key);
+    const messageId = randomUUID();
+    this.store.outboxSequence += 1;
+    this.store.outboxMessages.set(messageId, {
+      messageId,
+      orgId: input.orgId,
+      aggregateType: input.aggregateType,
+      aggregateId: input.aggregateId,
+      eventName: input.eventName,
+      dedupeKey: input.dedupeKey,
+      sequence: this.store.outboxSequence,
+      status: "pending",
+      attemptCount: 0,
+    });
     return true;
+  }
+
+  async peekPending(input: { orgId: string; limit: number }) {
+    return Array.from(this.store.outboxMessages.values())
+      .filter((row) => row.orgId === input.orgId && (row.status === "pending" || row.status === "failed"))
+      .sort((a, b) => a.sequence - b.sequence)
+      .slice(0, input.limit)
+      .map((row) => ({
+        messageId: row.messageId,
+        aggregateType: row.aggregateType,
+        aggregateId: row.aggregateId,
+        eventName: row.eventName,
+        dedupeKey: row.dedupeKey,
+        sequence: row.sequence,
+        attemptCount: row.attemptCount,
+        status: row.status === "failed" ? "failed" : "pending",
+      }));
+  }
+
+  async markDelivered(input: { messageId: string }) {
+    const row = this.store.outboxMessages.get(input.messageId);
+    if (!row) {
+      return;
+    }
+
+    this.store.outboxMessages.set(input.messageId, {
+      ...row,
+      status: "delivered",
+    });
+  }
+
+  async markFailed(input: { messageId: string; reason: string }) {
+    const row = this.store.outboxMessages.get(input.messageId);
+    if (!row) {
+      return;
+    }
+
+    this.store.outboxMessages.set(input.messageId, {
+      ...row,
+      status: "failed",
+      attemptCount: row.attemptCount + 1,
+    });
+  }
+
+  async retryFailed(input: { orgId: string; maxAttempts: number }) {
+    let retried = 0;
+    for (const [id, row] of this.store.outboxMessages.entries()) {
+      if (row.orgId !== input.orgId || row.status !== "failed") {
+        continue;
+      }
+
+      if (row.attemptCount >= input.maxAttempts) {
+        continue;
+      }
+
+      this.store.outboxMessages.set(id, {
+        ...row,
+        status: "pending",
+      });
+      retried += 1;
+    }
+
+    return retried;
   }
 }
 
