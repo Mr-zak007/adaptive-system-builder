@@ -91,7 +91,7 @@ export async function runArchitecturalFitnessChecks(): Promise<ArchitecturalFitn
       }
 
       const isApplicationRepositoryImport = /^@\/modules\/[^/]+\/application\/.+repository$/.test(importPath);
-      if (!/\/application\//.test(relativePath) && isApplicationRepositoryImport) {
+      if (!/\/(application|infrastructure)\//.test(relativePath) && isApplicationRepositoryImport) {
         repositoryLeakageViolations.push({
           rule: "repository-leakage",
           filePath: relativePath,
