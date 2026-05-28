@@ -136,6 +136,9 @@ export async function runVerticalSliceValidation(
   let transactionCount = 0;
   let eventTraceCount = 0;
   const errorClasses = new Set<string>();
+  let failureClassificationCoverage = 0;
+  let correlationCoverage = 0;
+  let retryVisibilityCoverage = 0;
 
   const lifecycle: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
   const failureScenarios: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
@@ -911,9 +914,9 @@ export async function runVerticalSliceValidation(
       },
     );
 
-    const correlationCoverage = logs.length === 0 ? 1 : logs.filter((x) => x.correlationId === correlationId).length / logs.length;
-    const failureClassificationCoverage = errorClasses.size === 0 ? 1 : 1;
-    const retryVisibilityCoverage = eventOutboxStressValidation.length === 0 ? 0 : 1;
+    correlationCoverage = logs.length === 0 ? 1 : logs.filter((x) => x.correlationId === correlationId).length / logs.length;
+    failureClassificationCoverage = errorClasses.size === 0 ? 1 : 1;
+    retryVisibilityCoverage = eventOutboxStressValidation.length === 0 ? 0 : 1;
     pushResult(
       observabilityValidation,
       "structured_error_taxonomy",
