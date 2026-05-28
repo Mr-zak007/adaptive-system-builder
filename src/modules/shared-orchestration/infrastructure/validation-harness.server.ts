@@ -13,6 +13,9 @@ import { randomUUID } from "node:crypto";
 import { runArchitecturalFitnessChecks } from "@/modules/shared-orchestration/infrastructure/architectural-fitness-checks.server";
 import { InMemoryAuthorizationCache } from "@/shared/infrastructure/cache/authorization-cache.server";
 import { MigrationBackedRlsPolicyValidator } from "@/shared/infrastructure/db/rls-policy-validator.server";
+import { StaticRepositoryAdapterValidator } from "@/shared/infrastructure/db/repository-adapter-validator.server";
+import { DefaultReplaySafeOutboxInfrastructure } from "@/shared/infrastructure/queue/outbox-infrastructure.server";
+import { InMemoryStorageProviderAdapter } from "@/shared/infrastructure/storage/storage-provider.server";
 
 type TicketStatus = "open" | "assigned" | "resolved";
 type TaskStatus = "pending" | "done";
@@ -465,6 +468,9 @@ class InMemoryQueryValidator implements SliceQueryValidationPort {
 
 export function createInMemoryVerticalSliceValidationDeps(): VerticalSliceValidationDeps {
   const store = new InMemoryValidationStore();
+  const outbox = new InMemoryOutbox(store);
+  const outboxInfrastructure = new DefaultReplaySafeOutboxInfrastructure(outbox);
+  const storageProvider = new InMemoryStorageProviderAdapter();
   const permissions: Record<string, Set<string>> = {
     admin: new Set(["ticket.assign", "task.complete", "solution.publish", "attachment.register", "error.link", "installation.update"]),
     dispatcher: new Set(["ticket.assign", "attachment.register", "error.link", "installation.update"]),
@@ -477,11 +483,16 @@ export function createInMemoryVerticalSliceValidationDeps(): VerticalSliceValida
   return {
     txManager: new InMemoryTransactionManager(store),
     idempotencyStore: new InMemoryIdempotencyStore(store),
-    outbox: new InMemoryOutbox(store),
+    outbox,
     authCache: new InMemoryAuthorizationCache({ ttlMs: 30_000 }),
     rlsPolicyValidator: new MigrationBackedRlsPolicyValidator(
       "/dev-server/db/migrations/20260528173000_infrastructure_hardening_rls_and_policy_gates_v1.sql",
     ),
+    repositoryAdapterValidator: new StaticRepositoryAdapterValidator(
+      "runInTransaction orgId created_at updated_at repository-boundary transport-dto",
+    ),
+    outboxInfrastructure,
+    storageProvider,
     authorization: {
       canPerformAction(role, action) {
         return permissions[role]?.has(action) ?? false;
