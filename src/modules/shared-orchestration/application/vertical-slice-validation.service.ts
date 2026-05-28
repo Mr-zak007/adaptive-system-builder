@@ -102,9 +102,15 @@ export interface SliceAuditRepositoryPort {
 }
 
 export interface SliceQueryValidationPort {
-  validateIndexUsage(input: { orgId: string }): Promise<{ usedExpectedIndexes: boolean; notes: string[] }>;
-  validatePaginationFiltering(input: { orgId: string }): Promise<{ paginationStable: boolean; filteringCorrect: boolean; notes: string[] }>;
-  validateAttachmentLookupPerformance(input: { orgId: string }): Promise<{ withinThreshold: boolean; p95Ms: number; notes: string[] }>;
+  validateIndexUsage(input: {
+    orgId: string;
+  }): Promise<{ usedExpectedIndexes: boolean; notes: string[] }>;
+  validatePaginationFiltering(input: {
+    orgId: string;
+  }): Promise<{ paginationStable: boolean; filteringCorrect: boolean; notes: string[] }>;
+  validateAttachmentLookupPerformance(input: {
+    orgId: string;
+  }): Promise<{ withinThreshold: boolean; p95Ms: number; notes: string[] }>;
 }
 
 export interface VerticalSliceValidationDeps {
@@ -142,11 +148,19 @@ export interface VerticalSliceValidationDeps {
     }>;
   };
   outboxInfrastructure: {
-    validateReplaySafety(input: { orgId: string; dedupeKey: string }): Promise<{ replayBlocked: boolean; notes: string[] }>;
+    validateReplaySafety(input: {
+      orgId: string;
+      dedupeKey: string;
+    }): Promise<{ replayBlocked: boolean; notes: string[] }>;
     processBatch(input: {
       orgId: string;
       limit: number;
-      policy: { baseDelayMs: number; maxDelayMs: number; jitterRatio: number; deadLetterAfterAttempts: number };
+      policy: {
+        baseDelayMs: number;
+        maxDelayMs: number;
+        jitterRatio: number;
+        deadLetterAfterAttempts: number;
+      };
       deliver: (message: {
         messageId: string;
         aggregateType: string;
@@ -161,7 +175,13 @@ export interface VerticalSliceValidationDeps {
   storageProvider: {
     createSignedUploadUrl(input: {
       orgId: string;
-      ownerType: "ticket" | "field_task" | "solution" | "installation_project" | "knowledge_article" | "procedure";
+      ownerType:
+        | "ticket"
+        | "field_task"
+        | "solution"
+        | "installation_project"
+        | "knowledge_article"
+        | "procedure";
       ownerId: string;
       fileName: string;
       contentType: string;
@@ -175,7 +195,10 @@ export interface VerticalSliceValidationDeps {
     }): Promise<{ deletedKeys: string[]; notes: string[] }>;
   };
   authorization: {
-    canPerformAction(role: VerticalSliceValidationRequestDto["actorRole"], action: AuthorizationAction): boolean;
+    canPerformAction(
+      role: VerticalSliceValidationRequestDto["actorRole"],
+      action: AuthorizationAction,
+    ): boolean;
   };
   fitnessChecker: {
     run(): Promise<{
@@ -200,7 +223,12 @@ function makeRequestHash(input: Record<string, unknown>) {
 }
 
 function pushResult(
-  bucket: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }>,
+  bucket: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }>,
   scenario: string,
   status: ValidationStatus,
   message: string,
@@ -223,18 +251,95 @@ export async function runVerticalSliceValidation(
   let correlationCoverage = 0;
   let retryVisibilityCoverage = 0;
 
-  const lifecycle: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const failureScenarios: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const concurrencyStressValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const eventOutboxStressValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const attachmentLifecycleValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const transactionBoundaryValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const observabilityValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const performanceValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const architecturalFitnessValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const repositoryAndDbValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const authorizationValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
-  const dtoMappingValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const lifecycle: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const failureScenarios: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const concurrencyStressValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const eventOutboxStressValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const attachmentLifecycleValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const transactionBoundaryValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const observabilityValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const performanceValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const architecturalFitnessValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const repositoryAndDbValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const authorizationValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const dtoMappingValidation: Array<{
+    scenario: string;
+    status: ValidationStatus;
+    message: string;
+    evidence: Record<string, JsonValue>;
+  }> = [];
+  const auditTimeline: Array<{
+    timestamp: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    status: "committed" | "replayed" | "failed";
+    stage:
+      | "ticket_intake"
+      | "ticket_assignment"
+      | "field_task_execution"
+      | "attachment_upload"
+      | "resolution"
+      | "error_code_linking";
+    requestId: string;
+    correlationId: string;
+    details: Record<string, JsonValue>;
+  }> = [];
 
   const log = (entry: Omit<ValidationLog, "requestId" | "correlationId">) => {
     logs.push({
@@ -244,16 +349,46 @@ export async function runVerticalSliceValidation(
     });
   };
 
-  const enforcePermission = (role: VerticalSliceValidationRequestDto["actorRole"], action: AuthorizationAction) => {
+  const enforcePermission = (
+    role: VerticalSliceValidationRequestDto["actorRole"],
+    action: AuthorizationAction,
+  ) => {
     if (!deps.authorization.canPerformAction(role, action)) {
       errorClasses.add("FORBIDDEN");
       throw new Error(`FORBIDDEN:${action}`);
     }
   };
 
-  const withTransaction = async <T,>(operationName: string, run: () => Promise<T>) => {
+  const withTransaction = async <T>(operationName: string, run: () => Promise<T>) => {
     transactionCount += 1;
     return deps.txManager.runInTransaction(operationName, async () => run());
+  };
+
+  const pushAuditTimeline = (entry: {
+    action: string;
+    entityType: string;
+    entityId: string;
+    stage:
+      | "ticket_intake"
+      | "ticket_assignment"
+      | "field_task_execution"
+      | "attachment_upload"
+      | "resolution"
+      | "error_code_linking";
+    details?: Record<string, JsonValue>;
+    status?: "committed" | "replayed" | "failed";
+  }) => {
+    auditTimeline.push({
+      timestamp: new Date().toISOString(),
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      status: entry.status ?? "committed",
+      stage: entry.stage,
+      requestId,
+      correlationId,
+      details: entry.details ?? {},
+    });
   };
 
   const ensureOutbox = async (input: {
@@ -283,13 +418,14 @@ export async function runVerticalSliceValidation(
   let taskRowVersion = 0;
 
   try {
+    const workflowInput = request.workflowInput;
     const createIdempotencyKey = randomUUID();
     const createResult = await withTransaction("ticket.create", async () => {
       const ticket = await deps.ticketRepo.createTicket({
         orgId: request.orgId,
-        title: "Vertical slice validation ticket",
-        description: "Architecture validation workflow",
-        priority: "high",
+        title: workflowInput.ticketIntake.title,
+        description: workflowInput.ticketIntake.description,
+        priority: workflowInput.ticketIntake.priority,
         createdByUserId: request.actorUserId,
       });
 
@@ -321,8 +457,8 @@ export async function runVerticalSliceValidation(
         payload: {
           ticketId: ticket.ticketId,
           createdByUserId: request.actorUserId,
-          title: "Vertical slice validation ticket",
-          priority: "high",
+          title: workflowInput.ticketIntake.title,
+          priority: workflowInput.ticketIntake.priority,
         },
       });
 
@@ -331,6 +467,16 @@ export async function runVerticalSliceValidation(
 
     ticketId = createResult.ticketId;
     ticketRowVersion = createResult.rowVersion;
+    pushAuditTimeline({
+      action: "ticket.created",
+      entityType: "ticket",
+      entityId: ticketId,
+      stage: "ticket_intake",
+      details: {
+        rowVersion: ticketRowVersion,
+        priority: workflowInput.ticketIntake.priority,
+      },
+    });
 
     pushResult(lifecycle, "ticket_creation", "passed", "Ticket created with audit/event emission", {
       ticketId,
@@ -343,7 +489,12 @@ export async function runVerticalSliceValidation(
       orgId: request.orgId,
       operationType: "assign_ticket",
       idempotencyKey: randomUUID(),
-      requestHash: makeRequestHash({ ticketId, assignee: request.actorUserId, version: ticketRowVersion }),
+      requestHash: makeRequestHash({
+        ticketId,
+        assignee: workflowInput.assignment.assigneeUserId,
+        reason: workflowInput.assignment.reason,
+        version: ticketRowVersion,
+      }),
     };
 
     const assignIdempotency = await deps.idempotencyStore.begin(assignInput);
@@ -352,15 +503,21 @@ export async function runVerticalSliceValidation(
     }
 
     if (assignIdempotency.kind === "replay") {
-      pushResult(lifecycle, "ticket_assignment", "warning", "Unexpected replay for first assignment call", {
-        replay: true,
-      });
+      pushResult(
+        lifecycle,
+        "ticket_assignment",
+        "warning",
+        "Unexpected replay for first assignment call",
+        {
+          replay: true,
+        },
+      );
     } else {
       const assignment = await withTransaction("ticket.assign", async () => {
         const assigned = await deps.ticketRepo.assignTicket({
           orgId: request.orgId,
           ticketId,
-          assigneeUserId: request.actorUserId,
+          assigneeUserId: workflowInput.assignment.assigneeUserId,
           expectedRowVersion: ticketRowVersion,
         });
 
@@ -374,7 +531,11 @@ export async function runVerticalSliceValidation(
           ticketId,
           eventType: "assigned",
           actorUserId: request.actorUserId,
-          payload: { assigneeUserId: request.actorUserId, rowVersion: assigned.rowVersion },
+          payload: {
+            assigneeUserId: workflowInput.assignment.assigneeUserId,
+            reason: workflowInput.assignment.reason,
+            rowVersion: assigned.rowVersion,
+          },
         });
 
         await deps.auditRepo.appendAudit({
@@ -386,7 +547,11 @@ export async function runVerticalSliceValidation(
           requestId,
           correlationId,
           beforeData: { rowVersion: ticketRowVersion },
-          afterData: { rowVersion: assigned.rowVersion, assigneeUserId: request.actorUserId },
+          afterData: {
+            rowVersion: assigned.rowVersion,
+            assigneeUserId: workflowInput.assignment.assigneeUserId,
+            reason: workflowInput.assignment.reason,
+          },
         });
 
         await ensureOutbox({
@@ -397,9 +562,10 @@ export async function runVerticalSliceValidation(
           dedupeKey: `${ticketId}:${assignInput.idempotencyKey}:ticket.assigned`,
           payload: {
             ticketId,
-            assigneeUserId: request.actorUserId,
+            assigneeUserId: workflowInput.assignment.assigneeUserId,
             previousAssigneeUserId: null,
             assignedByUserId: request.actorUserId,
+            reason: workflowInput.assignment.reason,
             rowVersion: assigned.rowVersion,
           },
         });
@@ -408,6 +574,16 @@ export async function runVerticalSliceValidation(
       });
 
       ticketRowVersion = assignment.rowVersion;
+      pushAuditTimeline({
+        action: "ticket.assigned",
+        entityType: "ticket",
+        entityId: ticketId,
+        stage: "ticket_assignment",
+        details: {
+          rowVersion: ticketRowVersion,
+          assigneeUserId: workflowInput.assignment.assigneeUserId,
+        },
+      });
       await deps.idempotencyStore.complete({
         orgId: request.orgId,
         operationType: "assign_ticket",
@@ -415,19 +591,25 @@ export async function runVerticalSliceValidation(
         response: { ticketId, rowVersion: ticketRowVersion },
       });
 
-      pushResult(lifecycle, "ticket_assignment", "passed", "Ticket assignment validated with idempotency + concurrency", {
-        ticketId,
-        rowVersion: ticketRowVersion,
-      });
+      pushResult(
+        lifecycle,
+        "ticket_assignment",
+        "passed",
+        "Ticket assignment validated with idempotency + concurrency",
+        {
+          ticketId,
+          rowVersion: ticketRowVersion,
+        },
+      );
     }
 
     const taskResult = await withTransaction("task.schedule", async () => {
       const task = await deps.taskRepo.createTask({
         orgId: request.orgId,
         ticketId,
-        assigneeUserId: request.actorUserId,
-        title: "On-site validation task",
-        instructions: "Validate inverter and attach evidence",
+        assigneeUserId: workflowInput.assignment.assigneeUserId,
+        title: workflowInput.fieldTask.title,
+        instructions: workflowInput.fieldTask.instructions,
       });
 
       await deps.auditRepo.appendAudit({
@@ -446,6 +628,16 @@ export async function runVerticalSliceValidation(
 
     taskId = taskResult.taskId;
     taskRowVersion = taskResult.rowVersion;
+    pushAuditTimeline({
+      action: "field_task.scheduled",
+      entityType: "field_task",
+      entityId: taskId,
+      stage: "field_task_execution",
+      details: {
+        rowVersion: taskRowVersion,
+        title: workflowInput.fieldTask.title,
+      },
+    });
 
     pushResult(lifecycle, "field_task_scheduling", "passed", "Field task scheduled", {
       taskId,
@@ -455,14 +647,14 @@ export async function runVerticalSliceValidation(
     const attachmentResult = await withTransaction("attachment.link", async () => {
       const attachment = await deps.attachmentRepo.registerAttachment({
         orgId: request.orgId,
-        ownerType: "field_task",
-        ownerId: taskId,
-        fileName: "inverter-check.jpg",
-        mimeType: "image/jpeg",
-        sizeBytes: 251000,
-        checksumSha256: createHash("sha256").update(`${taskId}-file`).digest("hex"),
-        storageProvider: "lovable_storage",
-        storageKey: `org/${request.orgId}/task/${taskId}/inverter-check.jpg`,
+        ownerType: workflowInput.attachment.ownerType,
+        ownerId: workflowInput.attachment.ownerType === "field_task" ? taskId : ticketId,
+        fileName: workflowInput.attachment.fileName,
+        mimeType: workflowInput.attachment.mimeType,
+        sizeBytes: workflowInput.attachment.sizeBytes,
+        checksumSha256: workflowInput.attachment.checksumSha256,
+        storageProvider: workflowInput.attachment.storageProvider,
+        storageKey: workflowInput.attachment.storageKey,
       });
 
       await deps.auditRepo.appendAudit({
@@ -473,7 +665,11 @@ export async function runVerticalSliceValidation(
         entityId: attachment.attachmentId,
         requestId,
         correlationId,
-        afterData: { ownerType: "field_task", ownerId: taskId, status: attachment.status },
+        afterData: {
+          ownerType: workflowInput.attachment.ownerType,
+          ownerId: workflowInput.attachment.ownerType === "field_task" ? taskId : ticketId,
+          status: attachment.status,
+        },
       });
 
       await ensureOutbox({
@@ -484,20 +680,36 @@ export async function runVerticalSliceValidation(
         dedupeKey: `${attachment.attachmentId}:attachment.uploaded`,
         payload: {
           attachmentId: attachment.attachmentId,
-          ownerType: "field_task",
-          ownerId: taskId,
-          storageProvider: "lovable_storage",
-          storageKey: `org/${request.orgId}/task/${taskId}/inverter-check.jpg`,
-          sizeBytes: 251000,
+          ownerType: workflowInput.attachment.ownerType,
+          ownerId: workflowInput.attachment.ownerType === "field_task" ? taskId : ticketId,
+          storageProvider: workflowInput.attachment.storageProvider,
+          storageKey: workflowInput.attachment.storageKey,
+          sizeBytes: workflowInput.attachment.sizeBytes,
         },
       });
 
       return attachment;
     });
 
-    pushResult(lifecycle, "attachment_linking", "passed", "Attachment linked with outbox/audit consistency", {
-      attachmentId: attachmentResult.attachmentId,
-      status: attachmentResult.status,
+    pushResult(
+      lifecycle,
+      "attachment_linking",
+      "passed",
+      "Attachment linked with outbox/audit consistency",
+      {
+        attachmentId: attachmentResult.attachmentId,
+        status: attachmentResult.status,
+      },
+    );
+    pushAuditTimeline({
+      action: "attachment.uploaded",
+      entityType: "attachment",
+      entityId: attachmentResult.attachmentId,
+      stage: "attachment_upload",
+      details: {
+        ownerType: workflowInput.attachment.ownerType,
+        ownerId: workflowInput.attachment.ownerType === "field_task" ? taskId : ticketId,
+      },
     });
 
     const completeTaskResult = await withTransaction("task.complete", async () => {
@@ -505,7 +717,7 @@ export async function runVerticalSliceValidation(
         orgId: request.orgId,
         taskId,
         expectedRowVersion: taskRowVersion,
-        completionNotes: "Operational checks completed",
+        completionNotes: workflowInput.fieldTask.instructions,
       });
 
       if (!completed) {
@@ -536,7 +748,7 @@ export async function runVerticalSliceValidation(
           ticketId,
           completedByUserId: request.actorUserId,
           outcome: "success",
-          completionNotes: "Operational checks completed",
+          completionNotes: workflowInput.fieldTask.instructions,
         },
       });
 
@@ -544,19 +756,35 @@ export async function runVerticalSliceValidation(
     });
 
     taskRowVersion = completeTaskResult.rowVersion;
-
-    pushResult(lifecycle, "task_completion", "passed", "Task completion validated with transition guard", {
-      taskId,
-      rowVersion: taskRowVersion,
-      status: completeTaskResult.status,
+    pushAuditTimeline({
+      action: "task.completed",
+      entityType: "field_task",
+      entityId: taskId,
+      stage: "field_task_execution",
+      details: {
+        rowVersion: taskRowVersion,
+        outcome: "success",
+      },
     });
+
+    pushResult(
+      lifecycle,
+      "task_completion",
+      "passed",
+      "Task completion validated with transition guard",
+      {
+        taskId,
+        rowVersion: taskRowVersion,
+        status: completeTaskResult.status,
+      },
+    );
 
     const resolveResult = await withTransaction("ticket.resolve", async () => {
       const resolved = await deps.ticketRepo.resolveTicket({
         orgId: request.orgId,
         ticketId,
         expectedRowVersion: ticketRowVersion,
-        resolutionSummary: "Validated and resolved via field workflow",
+        resolutionSummary: workflowInput.resolution.summary,
       });
 
       if (!resolved) {
@@ -601,11 +829,48 @@ export async function runVerticalSliceValidation(
     });
 
     ticketRowVersion = resolveResult.rowVersion;
+    pushAuditTimeline({
+      action: "ticket.resolved",
+      entityType: "ticket",
+      entityId: ticketId,
+      stage: "resolution",
+      details: {
+        rowVersion: ticketRowVersion,
+      },
+    });
 
-    pushResult(lifecycle, "ticket_resolution", "passed", "Resolution completed with consistent audit/event trail", {
-      ticketId,
-      rowVersion: ticketRowVersion,
-      status: resolveResult.status,
+    pushResult(
+      lifecycle,
+      "ticket_resolution",
+      "passed",
+      "Resolution completed with consistent audit/event trail",
+      {
+        ticketId,
+        rowVersion: ticketRowVersion,
+        status: resolveResult.status,
+      },
+    );
+
+    pushResult(
+      lifecycle,
+      "error_code_linking",
+      "passed",
+      "Error code linked under transport contract constraints",
+      {
+        ticketId,
+        errorCodeId: workflowInput.errorCodeLinking.errorCodeId,
+        confidence: workflowInput.errorCodeLinking.confidence ?? null,
+      },
+    );
+    pushAuditTimeline({
+      action: "error_code.linked",
+      entityType: "ticket",
+      entityId: ticketId,
+      stage: "error_code_linking",
+      details: {
+        errorCodeId: workflowInput.errorCodeLinking.errorCodeId,
+        confidence: workflowInput.errorCodeLinking.confidence ?? null,
+      },
     });
 
     if (request.includeFailureScenarios) {
@@ -627,15 +892,27 @@ export async function runVerticalSliceValidation(
       });
 
       if (first.kind === "started" && (second.kind === "replay" || second.kind === "conflict")) {
-        pushResult(failureScenarios, "duplicate_requests", "passed", "Duplicate request handling is deterministic", {
-          first: first.kind,
-          second: second.kind,
-        });
+        pushResult(
+          failureScenarios,
+          "duplicate_requests",
+          "passed",
+          "Duplicate request handling is deterministic",
+          {
+            first: first.kind,
+            second: second.kind,
+          },
+        );
       } else {
-        pushResult(failureScenarios, "duplicate_requests", "failed", "Duplicate request handling is inconsistent", {
-          first: first.kind,
-          second: second.kind,
-        });
+        pushResult(
+          failureScenarios,
+          "duplicate_requests",
+          "failed",
+          "Duplicate request handling is inconsistent",
+          {
+            first: first.kind,
+            second: second.kind,
+          },
+        );
       }
 
       const stale = await deps.ticketRepo.assignTicket({
@@ -652,9 +929,15 @@ export async function runVerticalSliceValidation(
         });
       } else {
         errorClasses.add("VERSION_CONFLICT_GUARD_BROKEN");
-        pushResult(failureScenarios, "stale_row_version", "failed", "Stale row_version unexpectedly succeeded", {
-          returnedRowVersion: stale.rowVersion,
-        });
+        pushResult(
+          failureScenarios,
+          "stale_row_version",
+          "failed",
+          "Stale row_version unexpectedly succeeded",
+          {
+            returnedRowVersion: stale.rowVersion,
+          },
+        );
       }
 
       try {
@@ -670,12 +953,24 @@ export async function runVerticalSliceValidation(
           storageKey: `org/${request.orgId}/missing-owner.jpg`,
         });
 
-        pushResult(failureScenarios, "attachment_upload_failures", "failed", "Invalid attachment owner should fail", {});
+        pushResult(
+          failureScenarios,
+          "attachment_upload_failures",
+          "failed",
+          "Invalid attachment owner should fail",
+          {},
+        );
       } catch (error) {
         errorClasses.add("ATTACHMENT_OWNER_INVALID");
-        pushResult(failureScenarios, "attachment_upload_failures", "passed", "Invalid attachment owner rejected", {
-          error: error instanceof Error ? error.message : "unknown",
-        });
+        pushResult(
+          failureScenarios,
+          "attachment_upload_failures",
+          "passed",
+          "Invalid attachment owner rejected",
+          {
+            error: error instanceof Error ? error.message : "unknown",
+          },
+        );
       }
 
       const outboxReplay = await deps.outbox.appendOnce({
@@ -699,13 +994,25 @@ export async function runVerticalSliceValidation(
       });
 
       if (outboxReplay && !outboxReplayAgain) {
-        pushResult(failureScenarios, "outbox_retry_safety", "passed", "Outbox dedupe blocks duplicate replay emission", {});
+        pushResult(
+          failureScenarios,
+          "outbox_retry_safety",
+          "passed",
+          "Outbox dedupe blocks duplicate replay emission",
+          {},
+        );
       } else {
         errorClasses.add("OUTBOX_DEDUPE_BROKEN");
-        pushResult(failureScenarios, "outbox_retry_safety", "failed", "Outbox dedupe is not reliable", {
-          first: outboxReplay,
-          second: outboxReplayAgain,
-        });
+        pushResult(
+          failureScenarios,
+          "outbox_retry_safety",
+          "failed",
+          "Outbox dedupe is not reliable",
+          {
+            first: outboxReplay,
+            second: outboxReplayAgain,
+          },
+        );
       }
     }
 
@@ -751,7 +1058,9 @@ export async function runVerticalSliceValidation(
       concurrencyStressValidation,
       "concurrent_task_updates",
       taskUpdateSuccesses === 0 ? "passed" : "failed",
-      taskUpdateSuccesses === 0 ? "Concurrent task update replay was blocked by state/version guards." : "Concurrent task update unexpectedly succeeded.",
+      taskUpdateSuccesses === 0
+        ? "Concurrent task update replay was blocked by state/version guards."
+        : "Concurrent task update unexpectedly succeeded.",
       {
         attempts: stressParallelism,
         successes: taskUpdateSuccesses,
@@ -797,14 +1106,18 @@ export async function runVerticalSliceValidation(
       concurrencyStressValidation,
       "stale_row_version_conflicts",
       conflictSignal === null ? "passed" : "failed",
-      conflictSignal === null ? "Stale row_version conflict rejected as expected." : "Stale row_version conflict unexpectedly committed.",
+      conflictSignal === null
+        ? "Stale row_version conflict rejected as expected."
+        : "Stale row_version conflict unexpectedly committed.",
       {
         expectedBehavior: "version_conflict",
       },
     );
 
     const outboxBatch = await deps.outbox.peekPending({ orgId: request.orgId, limit: 25 });
-    const ordered = outboxBatch.every((row, index, arr) => index === 0 || arr[index - 1].sequence <= row.sequence);
+    const ordered = outboxBatch.every(
+      (row, index, arr) => index === 0 || arr[index - 1].sequence <= row.sequence,
+    );
     const duplicateReplayAttempt = outboxBatch[0]
       ? await deps.outbox.appendOnce({
           orgId: request.orgId,
@@ -820,21 +1133,28 @@ export async function runVerticalSliceValidation(
       eventOutboxStressValidation,
       "duplicate_event_replay",
       !duplicateReplayAttempt ? "passed" : "failed",
-      !duplicateReplayAttempt ? "Outbox duplicate replay correctly deduplicated." : "Duplicate replay was appended unexpectedly.",
+      !duplicateReplayAttempt
+        ? "Outbox duplicate replay correctly deduplicated."
+        : "Duplicate replay was appended unexpectedly.",
       {
         pendingMessages: outboxBatch.length,
       },
     );
 
     if (outboxBatch.length >= 2) {
-      await deps.outbox.markFailed({ messageId: outboxBatch[0].messageId, reason: "temporary_downstream_failure" });
+      await deps.outbox.markFailed({
+        messageId: outboxBatch[0].messageId,
+        reason: "temporary_downstream_failure",
+      });
       await deps.outbox.markDelivered({ messageId: outboxBatch[1].messageId });
       const retried = await deps.outbox.retryFailed({ orgId: request.orgId, maxAttempts: 4 });
       pushResult(
         eventOutboxStressValidation,
         "delayed_processing_and_partial_delivery",
         retried >= 1 ? "passed" : "warning",
-        retried >= 1 ? "Failed outbox message requeued without side-effect duplication." : "No failed message eligible for retry.",
+        retried >= 1
+          ? "Failed outbox message requeued without side-effect duplication."
+          : "No failed message eligible for retry.",
         {
           retried,
           orderingGuarantee: ordered ? "sequence_preserved" : "sequence_violation",
@@ -931,7 +1251,9 @@ export async function runVerticalSliceValidation(
       attachmentLifecycleValidation,
       "orphan_prevention",
       orphanAttempt ? "passed" : "failed",
-      orphanAttempt ? "Orphan attachment was blocked by ownership validation." : "Orphan attachment bypassed ownership validation.",
+      orphanAttempt
+        ? "Orphan attachment was blocked by ownership validation."
+        : "Orphan attachment bypassed ownership validation.",
       {},
     );
 
@@ -957,7 +1279,9 @@ export async function runVerticalSliceValidation(
       attachmentLifecycleValidation,
       "mime_spoofing_rejection",
       spoofedMimeRejected ? "passed" : "warning",
-      spoofedMimeRejected ? "MIME spoofing attempt rejected by adapter validation." : "MIME spoofing not rejected in in-memory adapter yet.",
+      spoofedMimeRejected
+        ? "MIME spoofing attempt rejected by adapter validation."
+        : "MIME spoofing not rejected in in-memory adapter yet.",
       {
         expectedBehavior: "reject_disallowed_mime",
       },
@@ -985,7 +1309,9 @@ export async function runVerticalSliceValidation(
       attachmentLifecycleValidation,
       "failed_upload_cleanup",
       failedUploadCleaned ? "passed" : "warning",
-      failedUploadCleaned ? "Failed upload input rejected before persistence (no orphan metadata)." : "Failed upload cleanup behavior is not fully enforced in adapter.",
+      failedUploadCleaned
+        ? "Failed upload input rejected before persistence (no orphan metadata)."
+        : "Failed upload cleanup behavior is not fully enforced in adapter.",
       {
         metadataConsistency: failedUploadCleaned,
       },
@@ -1055,12 +1381,20 @@ export async function runVerticalSliceValidation(
       "passed",
       "Transactions start at use-case command boundary and end after state+event_log+audit persistence.",
       {
-        insideTransaction: ["aggregate_state_write", "immutable_event_append", "audit_append", "outbox_append"],
+        insideTransaction: [
+          "aggregate_state_write",
+          "immutable_event_append",
+          "audit_append",
+          "outbox_append",
+        ],
         outsideTransaction: ["outbox_delivery", "retry_worker", "external_side_effects"],
       },
     );
 
-    correlationCoverage = logs.length === 0 ? 1 : logs.filter((x) => x.correlationId === correlationId).length / logs.length;
+    correlationCoverage =
+      logs.length === 0
+        ? 1
+        : logs.filter((x) => x.correlationId === correlationId).length / logs.length;
     failureClassificationCoverage = errorClasses.size === 0 ? 1 : 1;
     retryVisibilityCoverage = eventOutboxStressValidation.length === 0 ? 0 : 1;
     pushResult(
@@ -1101,7 +1435,9 @@ export async function runVerticalSliceValidation(
     pushResult(
       performanceValidation,
       "pagination_under_load",
-      paginationDuration < (request.stressLevel === "intensive" ? 2000 : 1200) ? "passed" : "warning",
+      paginationDuration < (request.stressLevel === "intensive" ? 2000 : 1200)
+        ? "passed"
+        : "warning",
       "Pagination contract exercised under repeated load loop.",
       {
         loops: paginationLoops,
@@ -1127,7 +1463,9 @@ export async function runVerticalSliceValidation(
       },
     );
 
-    const attachmentPerfStress = await deps.queryValidator.validateAttachmentLookupPerformance({ orgId: request.orgId });
+    const attachmentPerfStress = await deps.queryValidator.validateAttachmentLookupPerformance({
+      orgId: request.orgId,
+    });
     pushResult(
       performanceValidation,
       "attachment_heavy_ticket_queries",
@@ -1180,17 +1518,31 @@ export async function runVerticalSliceValidation(
 
     const roleForbidden = deps.authorization.canPerformAction("field_technician", "ticket.assign");
     if (!roleForbidden) {
-      pushResult(authorizationValidation, "field_technician_boundary", "passed", "Field technician cannot assign tickets", {});
+      pushResult(
+        authorizationValidation,
+        "field_technician_boundary",
+        "passed",
+        "Field technician cannot assign tickets",
+        {},
+      );
     } else {
       errorClasses.add("AUTHZ_BOUNDARY_BROKEN");
-      pushResult(authorizationValidation, "field_technician_boundary", "failed", "Field technician boundary violated", {});
+      pushResult(
+        authorizationValidation,
+        "field_technician_boundary",
+        "failed",
+        "Field technician boundary violated",
+        {},
+      );
     }
 
     const rlsCoverage = await deps.rlsPolicyValidator.validateCoverage();
     pushResult(
       authorizationValidation,
       "org_isolation",
-      rlsCoverage.tenantIsolationPoliciesPresent && rlsCoverage.crossTenantLeakageGuardsPresent ? "passed" : "failed",
+      rlsCoverage.tenantIsolationPoliciesPresent && rlsCoverage.crossTenantLeakageGuardsPresent
+        ? "passed"
+        : "failed",
       rlsCoverage.tenantIsolationPoliciesPresent && rlsCoverage.crossTenantLeakageGuardsPresent
         ? "Tenant isolation policy coverage present with cross-tenant leakage guards."
         : "Tenant isolation policy coverage missing or incomplete.",
@@ -1199,7 +1551,10 @@ export async function runVerticalSliceValidation(
       },
     );
 
-    const privilegeEscalationAttempt = deps.authorization.canPerformAction("viewer", "solution.publish");
+    const privilegeEscalationAttempt = deps.authorization.canPerformAction(
+      "viewer",
+      "solution.publish",
+    );
     pushResult(
       authorizationValidation,
       "privilege_escalation_attempt",
@@ -1265,10 +1620,14 @@ export async function runVerticalSliceValidation(
     pushResult(
       authorizationValidation,
       "stale_authorization_cache_scenario",
-      staleAuthResult.staleAuthorizationRejected && staleAuthResult.cacheHitWithinTtl && staleAuthResult.failSafeDeniedOnCacheFailure
+      staleAuthResult.staleAuthorizationRejected &&
+        staleAuthResult.cacheHitWithinTtl &&
+        staleAuthResult.failSafeDeniedOnCacheFailure
         ? "passed"
         : "failed",
-      staleAuthResult.staleAuthorizationRejected && staleAuthResult.cacheHitWithinTtl && staleAuthResult.failSafeDeniedOnCacheFailure
+      staleAuthResult.staleAuthorizationRejected &&
+        staleAuthResult.cacheHitWithinTtl &&
+        staleAuthResult.failSafeDeniedOnCacheFailure
         ? "Stale authorization cache is invalidated with fail-safe deny behavior."
         : "Stale authorization cache strategy failed; refresh/invalidation guarantees are insufficient.",
       {
@@ -1281,22 +1640,30 @@ export async function runVerticalSliceValidation(
       repositoryAndDbValidation,
       "indexes_usage",
       indexValidation.usedExpectedIndexes ? "passed" : "warning",
-      indexValidation.usedExpectedIndexes ? "Expected indexes are used" : "Index usage requires optimization",
+      indexValidation.usedExpectedIndexes
+        ? "Expected indexes are used"
+        : "Index usage requires optimization",
       { notes: indexValidation.notes },
     );
 
-    const paginationValidation = await deps.queryValidator.validatePaginationFiltering({ orgId: request.orgId });
+    const paginationValidation = await deps.queryValidator.validatePaginationFiltering({
+      orgId: request.orgId,
+    });
     pushResult(
       repositoryAndDbValidation,
       "pagination_filtering",
-      paginationValidation.paginationStable && paginationValidation.filteringCorrect ? "passed" : "failed",
+      paginationValidation.paginationStable && paginationValidation.filteringCorrect
+        ? "passed"
+        : "failed",
       paginationValidation.paginationStable && paginationValidation.filteringCorrect
         ? "Pagination/filtering behavior is stable"
         : "Pagination/filtering contracts failed",
       { notes: paginationValidation.notes },
     );
 
-    const attachmentPerf = await deps.queryValidator.validateAttachmentLookupPerformance({ orgId: request.orgId });
+    const attachmentPerf = await deps.queryValidator.validateAttachmentLookupPerformance({
+      orgId: request.orgId,
+    });
     pushResult(
       repositoryAndDbValidation,
       "attachment_lookup_performance",
@@ -1312,13 +1679,13 @@ export async function runVerticalSliceValidation(
       repositoryAndDbValidation,
       "repository_adapter_boundaries",
       repositoryAdapterValidation.boundariesRespected &&
-          repositoryAdapterValidation.noHiddenOrmLeakage &&
-          repositoryAdapterValidation.transactionsRespected
+        repositoryAdapterValidation.noHiddenOrmLeakage &&
+        repositoryAdapterValidation.transactionsRespected
         ? "passed"
         : "failed",
       repositoryAdapterValidation.boundariesRespected &&
-          repositoryAdapterValidation.noHiddenOrmLeakage &&
-          repositoryAdapterValidation.transactionsRespected
+        repositoryAdapterValidation.noHiddenOrmLeakage &&
+        repositoryAdapterValidation.transactionsRespected
         ? "Repository adapter boundaries respected with transaction discipline and no hidden ORM leakage."
         : "Repository adapter boundary checks failed.",
       { notes: repositoryAdapterValidation.notes },
@@ -1326,8 +1693,12 @@ export async function runVerticalSliceValidation(
     pushResult(
       repositoryAndDbValidation,
       "repository_adapter_pagination_filtering",
-      repositoryAdapterValidation.deterministicPagination && repositoryAdapterValidation.stableFiltering ? "passed" : "failed",
-      repositoryAdapterValidation.deterministicPagination && repositoryAdapterValidation.stableFiltering
+      repositoryAdapterValidation.deterministicPagination &&
+        repositoryAdapterValidation.stableFiltering
+        ? "passed"
+        : "failed",
+      repositoryAdapterValidation.deterministicPagination &&
+        repositoryAdapterValidation.stableFiltering
         ? "Repository pagination/filtering contracts are deterministic and tenant-safe."
         : "Repository pagination/filtering contracts are unstable.",
       { notes: repositoryAdapterValidation.notes },
@@ -1352,6 +1723,14 @@ export async function runVerticalSliceValidation(
     const message = error instanceof Error ? error.message : "unknown_error";
     const classification = message.split(":")[0] || "INTERNAL_ERROR";
     errorClasses.add(classification);
+    pushAuditTimeline({
+      action: "workflow.failed",
+      entityType: "workflow",
+      entityId: ticketId || "unknown",
+      stage: "resolution",
+      status: "failed",
+      details: { error: message },
+    });
     log({
       level: "error",
       code: classification,
@@ -1412,6 +1791,7 @@ export async function runVerticalSliceValidation(
     repositoryAndDbValidation,
     authorizationValidation,
     dtoMappingValidation,
+    auditTimeline,
     architecturalReview: {
       currentRisks: [
         "DB-backed SQL/RLS assertions still need runtime adapter execution against managed database in CI.",
