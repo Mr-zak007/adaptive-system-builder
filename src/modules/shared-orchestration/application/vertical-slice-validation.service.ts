@@ -111,6 +111,69 @@ export interface VerticalSliceValidationDeps {
   txManager: TransactionManager;
   idempotencyStore: IdempotencyStore;
   outbox: DomainOutbox;
+  authCache: {
+    validateStaleAuthorizationCacheScenario(input: {
+      orgId: string;
+      userId: string;
+      oldRoleRevision: string;
+      newRoleRevision: string;
+    }): Promise<{
+      staleAuthorizationRejected: boolean;
+      cacheHitWithinTtl: boolean;
+      failSafeDeniedOnCacheFailure: boolean;
+      notes: string[];
+    }>;
+  };
+  rlsPolicyValidator: {
+    validateCoverage(): Promise<{
+      tenantIsolationPoliciesPresent: boolean;
+      crossTenantLeakageGuardsPresent: boolean;
+      notes: string[];
+    }>;
+  };
+  repositoryAdapterValidator: {
+    validate(): Promise<{
+      boundariesRespected: boolean;
+      noHiddenOrmLeakage: boolean;
+      transactionsRespected: boolean;
+      deterministicPagination: boolean;
+      stableFiltering: boolean;
+      notes: string[];
+    }>;
+  };
+  outboxInfrastructure: {
+    validateReplaySafety(input: { orgId: string; dedupeKey: string }): Promise<{ replayBlocked: boolean; notes: string[] }>;
+    processBatch(input: {
+      orgId: string;
+      limit: number;
+      policy: { baseDelayMs: number; maxDelayMs: number; jitterRatio: number; deadLetterAfterAttempts: number };
+      deliver: (message: {
+        messageId: string;
+        aggregateType: string;
+        aggregateId: string;
+        eventName: string;
+        dedupeKey: string;
+        sequence: number;
+        attemptCount: number;
+      }) => Promise<"ok" | "retryable_error" | "poison">;
+    }): Promise<{ delivered: number; failed: number; deadLettered: number }>;
+  };
+  storageProvider: {
+    createSignedUploadUrl(input: {
+      orgId: string;
+      ownerType: "ticket" | "field_task" | "solution" | "installation_project" | "knowledge_article" | "procedure";
+      ownerId: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+      checksumSha256: string;
+    }): Promise<{ storageKey: string; expiresAt: string }>;
+    reconcileOrphans(input: {
+      orgId: string;
+      existingAttachmentKeys: string[];
+      maxDelete: number;
+    }): Promise<{ deletedKeys: string[]; notes: string[] }>;
+  };
   authorization: {
     canPerformAction(role: VerticalSliceValidationRequestDto["actorRole"], action: AuthorizationAction): boolean;
   };
@@ -121,6 +184,8 @@ export interface VerticalSliceValidationDeps {
       dtoViolations: Array<{ rule: string; filePath: string; details: string }>;
       domainBypassViolations: Array<{ rule: string; filePath: string; details: string }>;
       directDbAccessViolations: Array<{ rule: string; filePath: string; details: string }>;
+      forbiddenImportViolations: Array<{ rule: string; filePath: string; details: string }>;
+      eventContractDriftViolations: Array<{ rule: string; filePath: string; details: string }>;
     }>;
   };
   ticketRepo: SliceTicketRepositoryPort;
@@ -809,6 +874,41 @@ export async function runVerticalSliceValidation(
       },
     );
 
+    const replaySafetyCheck = await deps.outboxInfrastructure.validateReplaySafety({
+      orgId: request.orgId,
+      dedupeKey: outboxBatch[0]?.dedupeKey ?? `${ticketId}:ticket.created`,
+    });
+    const outboxBatchProcessing = await deps.outboxInfrastructure.processBatch({
+      orgId: request.orgId,
+      limit: 10,
+      policy: {
+        baseDelayMs: 200,
+        maxDelayMs: 8000,
+        jitterRatio: 0.2,
+        deadLetterAfterAttempts: 4,
+      },
+      deliver: async (message) => {
+        if (message.eventName.includes("attachment") && message.attemptCount >= 2) {
+          return "poison";
+        }
+        return message.attemptCount >= 1 ? "ok" : "retryable_error";
+      },
+    });
+    pushResult(
+      eventOutboxStressValidation,
+      "outbox_dead_letter_and_backoff",
+      replaySafetyCheck.replayBlocked ? "passed" : "failed",
+      replaySafetyCheck.replayBlocked
+        ? "Replay-safe handlers, retry backoff, and dead-letter mechanics executed successfully."
+        : "Outbox replay safety validation failed.",
+      {
+        notes: replaySafetyCheck.notes,
+        delivered: outboxBatchProcessing.delivered,
+        failed: outboxBatchProcessing.failed,
+        deadLettered: outboxBatchProcessing.deadLettered,
+      },
+    );
+
     const orphanAttempt = await (async () => {
       try {
         await deps.attachmentRepo.registerAttachment({
@@ -921,6 +1021,34 @@ export async function runVerticalSliceValidation(
       },
     );
 
+    const signedUpload = await deps.storageProvider.createSignedUploadUrl({
+      orgId: request.orgId,
+      ownerType: "field_task",
+      ownerId: taskId,
+      fileName: "secure-proof.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: 512_000,
+      checksumSha256: createHash("sha256").update("secure-proof").digest("hex"),
+    });
+    const orphanReconciliation = await deps.storageProvider.reconcileOrphans({
+      orgId: request.orgId,
+      existingAttachmentKeys: [signedUpload.storageKey],
+      maxDelete: 25,
+    });
+    pushResult(
+      attachmentLifecycleValidation,
+      "signed_url_cleanup_reconciliation",
+      signedUpload.storageKey.length > 0 ? "passed" : "failed",
+      signedUpload.storageKey.length > 0
+        ? "Signed upload strategy, secure key scoping, and orphan reconciliation executed."
+        : "Storage signed URL strategy failed.",
+      {
+        expiresAt: signedUpload.expiresAt,
+        reconciledDeletes: orphanReconciliation.deletedKeys.length,
+        reconciliationNotes: orphanReconciliation.notes,
+      },
+    );
+
     pushResult(
       transactionBoundaryValidation,
       "transaction_scope_definition",
@@ -1018,7 +1146,9 @@ export async function runVerticalSliceValidation(
       fitness.repositoryLeakageViolations.length +
       fitness.dtoViolations.length +
       fitness.domainBypassViolations.length +
-      fitness.directDbAccessViolations.length;
+      fitness.directDbAccessViolations.length +
+      fitness.forbiddenImportViolations.length +
+      fitness.eventContractDriftViolations.length;
     pushResult(
       architecturalFitnessValidation,
       "cross_module_imports",
@@ -1034,7 +1164,7 @@ export async function runVerticalSliceValidation(
     pushResult(
       architecturalFitnessValidation,
       "repository_dto_domain_db_boundaries",
-      violationTotal === 0 ? "passed" : "warning",
+      violationTotal === 0 ? "passed" : "failed",
       violationTotal === 0
         ? "Repository leakage/DTO bypass/domain bypass/direct DB access checks passed."
         : "Boundary risks detected; review evidence.",
@@ -1043,6 +1173,8 @@ export async function runVerticalSliceValidation(
         dtoViolations: fitness.dtoViolations.length,
         domainBypass: fitness.domainBypassViolations.length,
         directDbAccess: fitness.directDbAccessViolations.length,
+        forbiddenImports: fitness.forbiddenImportViolations.length,
+        eventContractDrift: fitness.eventContractDriftViolations.length,
       },
     );
 
@@ -1054,9 +1186,18 @@ export async function runVerticalSliceValidation(
       pushResult(authorizationValidation, "field_technician_boundary", "failed", "Field technician boundary violated", {});
     }
 
-    pushResult(authorizationValidation, "org_isolation", "warning", "Org isolation requires runtime RLS integration test on adapters", {
-      status: "pending_real_db_assertion",
-    });
+    const rlsCoverage = await deps.rlsPolicyValidator.validateCoverage();
+    pushResult(
+      authorizationValidation,
+      "org_isolation",
+      rlsCoverage.tenantIsolationPoliciesPresent && rlsCoverage.crossTenantLeakageGuardsPresent ? "passed" : "failed",
+      rlsCoverage.tenantIsolationPoliciesPresent && rlsCoverage.crossTenantLeakageGuardsPresent
+        ? "Tenant isolation policy coverage present with cross-tenant leakage guards."
+        : "Tenant isolation policy coverage missing or incomplete.",
+      {
+        notes: rlsCoverage.notes,
+      },
+    );
 
     const privilegeEscalationAttempt = deps.authorization.canPerformAction("viewer", "solution.publish");
     pushResult(
@@ -1115,13 +1256,23 @@ export async function runVerticalSliceValidation(
       {},
     );
 
+    const staleAuthResult = await deps.authCache.validateStaleAuthorizationCacheScenario({
+      orgId: request.orgId,
+      userId: request.actorUserId,
+      oldRoleRevision: "revision-v1",
+      newRoleRevision: "revision-v2",
+    });
     pushResult(
       authorizationValidation,
       "stale_authorization_cache_scenario",
-      "warning",
-      "Stale authorization cache scenario documented; requires adapter-level cache invalidation integration tests.",
+      staleAuthResult.staleAuthorizationRejected && staleAuthResult.cacheHitWithinTtl && staleAuthResult.failSafeDeniedOnCacheFailure
+        ? "passed"
+        : "failed",
+      staleAuthResult.staleAuthorizationRejected && staleAuthResult.cacheHitWithinTtl && staleAuthResult.failSafeDeniedOnCacheFailure
+        ? "Stale authorization cache is invalidated with fail-safe deny behavior."
+        : "Stale authorization cache strategy failed; refresh/invalidation guarantees are insufficient.",
       {
-        expectedBehavior: "role_change_invalidation_before_next_command",
+        notes: staleAuthResult.notes,
       },
     );
 
@@ -1154,6 +1305,32 @@ export async function runVerticalSliceValidation(
         ? "Attachment lookup performance is within threshold"
         : "Attachment lookup performance risk detected",
       { p95Ms: attachmentPerf.p95Ms, notes: attachmentPerf.notes },
+    );
+
+    const repositoryAdapterValidation = await deps.repositoryAdapterValidator.validate();
+    pushResult(
+      repositoryAndDbValidation,
+      "repository_adapter_boundaries",
+      repositoryAdapterValidation.boundariesRespected &&
+          repositoryAdapterValidation.noHiddenOrmLeakage &&
+          repositoryAdapterValidation.transactionsRespected
+        ? "passed"
+        : "failed",
+      repositoryAdapterValidation.boundariesRespected &&
+          repositoryAdapterValidation.noHiddenOrmLeakage &&
+          repositoryAdapterValidation.transactionsRespected
+        ? "Repository adapter boundaries respected with transaction discipline and no hidden ORM leakage."
+        : "Repository adapter boundary checks failed.",
+      { notes: repositoryAdapterValidation.notes },
+    );
+    pushResult(
+      repositoryAndDbValidation,
+      "repository_adapter_pagination_filtering",
+      repositoryAdapterValidation.deterministicPagination && repositoryAdapterValidation.stableFiltering ? "passed" : "failed",
+      repositoryAdapterValidation.deterministicPagination && repositoryAdapterValidation.stableFiltering
+        ? "Repository pagination/filtering contracts are deterministic and tenant-safe."
+        : "Repository pagination/filtering contracts are unstable.",
+      { notes: repositoryAdapterValidation.notes },
     );
 
     pushResult(
@@ -1237,7 +1414,7 @@ export async function runVerticalSliceValidation(
     dtoMappingValidation,
     architecturalReview: {
       currentRisks: [
-        "Org isolation and stale-authorization-cache checks are warning-level until DB-backed/RLS adapters are wired.",
+        "DB-backed SQL/RLS assertions still need runtime adapter execution against managed database in CI.",
         "In-memory stress harness cannot measure true lock contention under production DB semantics.",
       ],
       whatWorked: [
@@ -1262,10 +1439,10 @@ export async function runVerticalSliceValidation(
       earlyRefactors: [
         "Replace in-memory/query-validator placeholders with real DB-backed adapter metrics assertions.",
         "Enforce strict MIME allow-list + checksum verification in attachment adapter with quarantine flow.",
-        "Add stale-authorization-cache invalidation test fixtures tied to identity-access adapter.",
+        "Connect auth role-revision source-of-truth to cache invalidation events from identity-access module.",
       ],
       unclearBoundaries: [
-        "Tenant isolation and ownership bypass checks need DB adapter + RLS runtime assertions to move from warning to pass/fail hard gate.",
+        "Tenant isolation hard gate is migration-backed now, but requires continuous runtime SQL policy tests in pipeline.",
       ],
       couplingsDetected: [
         "Vertical slice service is intentionally central for validation, but must remain test-orchestration-only to avoid fat orchestrator drift.",
