@@ -100,7 +100,8 @@ export async function runArchitecturalFitnessChecks(): Promise<ArchitecturalFitn
         });
       }
 
-      if (/^@\/modules\/.+\/infrastructure\//.test(importPath) && !/\/infrastructure\//.test(relativePath)) {
+      const isServerFunctionWiringFile = /\/contracts\/.+\.functions\.ts$/.test(relativePath);
+      if (/^@\/modules\/.+\/infrastructure\//.test(importPath) && !/\/infrastructure\//.test(relativePath) && !isServerFunctionWiringFile) {
         domainBypassViolations.push({
           rule: "domain-bypass",
           filePath: relativePath,
