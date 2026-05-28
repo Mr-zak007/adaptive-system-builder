@@ -1102,7 +1102,20 @@ export async function runVerticalSliceValidation(
     });
   }
 
-  const all = [...lifecycle, ...failureScenarios, ...repositoryAndDbValidation, ...authorizationValidation, ...dtoMappingValidation];
+  const all = [
+    ...lifecycle,
+    ...failureScenarios,
+    ...concurrencyStressValidation,
+    ...eventOutboxStressValidation,
+    ...attachmentLifecycleValidation,
+    ...transactionBoundaryValidation,
+    ...observabilityValidation,
+    ...performanceValidation,
+    ...architecturalFitnessValidation,
+    ...repositoryAndDbValidation,
+    ...authorizationValidation,
+    ...dtoMappingValidation,
+  ];
   const passed = all.filter((x) => x.status === "passed").length;
   const failed = all.filter((x) => x.status === "failed").length;
   const warnings = all.filter((x) => x.status === "warning").length;
@@ -1118,38 +1131,67 @@ export async function runVerticalSliceValidation(
     },
     lifecycle,
     failureScenarios,
+    concurrencyStressValidation,
+    eventOutboxStressValidation,
+    attachmentLifecycleValidation,
+    transactionBoundaryValidation,
     observability: {
       logCount: logs.length,
       transactionCount,
       eventTraceCount,
       errorClasses: Array.from(errorClasses),
+      failureClassificationCoverage,
+      correlationCoverage,
+      retryVisibilityCoverage,
     },
+    observabilityValidation,
+    performanceValidation,
+    architecturalFitnessValidation,
     repositoryAndDbValidation,
     authorizationValidation,
     dtoMappingValidation,
     architecturalReview: {
+      currentRisks: [
+        "Org isolation and stale-authorization-cache checks are warning-level until DB-backed/RLS adapters are wired.",
+        "In-memory stress harness cannot measure true lock contention under production DB semantics.",
+      ],
       whatWorked: [
         "Use-case-driven lifecycle orchestration executed with explicit transaction boundaries.",
         "Idempotency and optimistic concurrency checks were exercised with failure assertions.",
-        "Outbox dedupe and deterministic event payload checks are embedded in validation path.",
+        "Outbox dedupe, replay protection, and retry stress checks are embedded in validation path.",
+      ],
+      weakBoundaries: [
+        "Attachment MIME/checksum hard validation is still adapter-dependent; in-memory harness marks this as warning when not enforced.",
+        "Performance validation currently uses synthetic stress loops and must be paired with DB telemetry for hard SLO gates.",
+      ],
+      scalingConcerns: [
+        "Outbox retry storms can amplify queue pressure without adaptive backoff + dead-letter thresholds.",
+        "Audit/event write amplification grows quickly on attachment-heavy tickets and needs partition/retention strategy.",
+      ],
+      highestRiskModules: [
+        "attachments",
+        "jobs-orchestration",
+        "shared-orchestration",
+        "ticketing",
       ],
       earlyRefactors: [
         "Replace in-memory/query-validator placeholders with real DB-backed adapter metrics assertions.",
-        "Add event ordering sequence numbers for stronger cross-worker replay guarantees.",
+        "Enforce strict MIME allow-list + checksum verification in attachment adapter with quarantine flow.",
+        "Add stale-authorization-cache invalidation test fixtures tied to identity-access adapter.",
       ],
       unclearBoundaries: [
-        "Org isolation verification is currently warning-level until adapter-level RLS assertions run.",
+        "Tenant isolation and ownership bypass checks need DB adapter + RLS runtime assertions to move from warning to pass/fail hard gate.",
       ],
       couplingsDetected: [
-        "Vertical slice currently centralizes orchestration decisions; keep slice-specific and avoid global orchestrator growth.",
+        "Vertical slice service is intentionally central for validation, but must remain test-orchestration-only to avoid fat orchestrator drift.",
       ],
       performanceRisks: [
-        "Attachment lookup and timeline queries need periodic EXPLAIN ANALYZE regression checks.",
-        "Audit/event table growth requires retention/partition strategy before high volume.",
+        "Ticket timeline and event growth patterns need periodic EXPLAIN ANALYZE regression checks.",
+        "Attachment-heavy tickets and audit log amplification can degrade p95 unless indexed and partitioned early.",
       ],
       scalingRisks: [
-        "Outbox publisher throughput and retry pressure could increase with bursty workloads.",
-        "Correlation tracing should be integrated with centralized log sink for multi-worker scaling.",
+        "Outbox publisher throughput and retry pressure rise sharply with bursty field operations.",
+        "Correlation/event tracing must be centralized to preserve causality across workers and async jobs.",
       ],
     },
   };
