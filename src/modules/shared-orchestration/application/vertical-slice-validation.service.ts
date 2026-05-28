@@ -235,6 +235,17 @@ export async function runVerticalSliceValidation(
   const repositoryAndDbValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
   const authorizationValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
   const dtoMappingValidation: Array<{ scenario: string; status: ValidationStatus; message: string; evidence: Record<string, JsonValue> }> = [];
+  const auditTimeline: Array<{
+    timestamp: string;
+    action: string;
+    entityType: string;
+    entityId: string;
+    status: "committed" | "replayed" | "failed";
+    stage: "ticket_intake" | "ticket_assignment" | "field_task_execution" | "attachment_upload" | "resolution" | "error_code_linking";
+    requestId: string;
+    correlationId: string;
+    details: Record<string, JsonValue>;
+  }> = [];
 
   const log = (entry: Omit<ValidationLog, "requestId" | "correlationId">) => {
     logs.push({
@@ -254,6 +265,27 @@ export async function runVerticalSliceValidation(
   const withTransaction = async <T,>(operationName: string, run: () => Promise<T>) => {
     transactionCount += 1;
     return deps.txManager.runInTransaction(operationName, async () => run());
+  };
+
+  const pushAuditTimeline = (entry: {
+    action: string;
+    entityType: string;
+    entityId: string;
+    stage: "ticket_intake" | "ticket_assignment" | "field_task_execution" | "attachment_upload" | "resolution" | "error_code_linking";
+    details?: Record<string, JsonValue>;
+    status?: "committed" | "replayed" | "failed";
+  }) => {
+    auditTimeline.push({
+      timestamp: new Date().toISOString(),
+      action: entry.action,
+      entityType: entry.entityType,
+      entityId: entry.entityId,
+      status: entry.status ?? "committed",
+      stage: entry.stage,
+      requestId,
+      correlationId,
+      details: entry.details ?? {},
+    });
   };
 
   const ensureOutbox = async (input: {
