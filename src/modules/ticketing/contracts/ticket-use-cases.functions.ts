@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { assignTicketUseCaseRequestSchema } from "@/shared/contracts/api/use-case-contracts";
+import { assignTicketUseCaseRequestSchema, resolveTicketUseCaseRequestSchema } from "@/shared/contracts/api/use-case-contracts";
 
 export const assignTicket = createServerFn({ method: "POST" })
   .inputValidator((data) => assignTicketUseCaseRequestSchema.parse(data))
@@ -8,7 +8,7 @@ export const assignTicket = createServerFn({ method: "POST" })
   });
 
 export const resolveTicket = createServerFn({ method: "POST" })
-  .inputValidator((data) => data)
+  .inputValidator((data) => resolveTicketUseCaseRequestSchema.parse(data))
   .handler(async () => {
     throw new Error("NOT_IMPLEMENTED: bind resolveTicket application service adapter");
   });
