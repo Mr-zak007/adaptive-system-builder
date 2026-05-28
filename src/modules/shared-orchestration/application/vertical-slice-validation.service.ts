@@ -1040,7 +1040,9 @@ export async function runVerticalSliceValidation(
       fitness.repositoryLeakageViolations.length +
       fitness.dtoViolations.length +
       fitness.domainBypassViolations.length +
-      fitness.directDbAccessViolations.length;
+      fitness.directDbAccessViolations.length +
+      fitness.forbiddenImportViolations.length +
+      fitness.eventContractDriftViolations.length;
     pushResult(
       architecturalFitnessValidation,
       "cross_module_imports",
@@ -1056,7 +1058,7 @@ export async function runVerticalSliceValidation(
     pushResult(
       architecturalFitnessValidation,
       "repository_dto_domain_db_boundaries",
-      violationTotal === 0 ? "passed" : "warning",
+      violationTotal === 0 ? "passed" : "failed",
       violationTotal === 0
         ? "Repository leakage/DTO bypass/domain bypass/direct DB access checks passed."
         : "Boundary risks detected; review evidence.",
@@ -1065,6 +1067,8 @@ export async function runVerticalSliceValidation(
         dtoViolations: fitness.dtoViolations.length,
         domainBypass: fitness.domainBypassViolations.length,
         directDbAccess: fitness.directDbAccessViolations.length,
+        forbiddenImports: fitness.forbiddenImportViolations.length,
+        eventContractDrift: fitness.eventContractDriftViolations.length,
       },
     );
 
@@ -1076,9 +1080,18 @@ export async function runVerticalSliceValidation(
       pushResult(authorizationValidation, "field_technician_boundary", "failed", "Field technician boundary violated", {});
     }
 
-    pushResult(authorizationValidation, "org_isolation", "warning", "Org isolation requires runtime RLS integration test on adapters", {
-      status: "pending_real_db_assertion",
-    });
+    const rlsCoverage = await deps.rlsPolicyValidator.validateCoverage();
+    pushResult(
+      authorizationValidation,
+      "org_isolation",
+      rlsCoverage.tenantIsolationPoliciesPresent && rlsCoverage.crossTenantLeakageGuardsPresent ? "passed" : "failed",
+      rlsCoverage.tenantIsolationPoliciesPresent && rlsCoverage.crossTenantLeakageGuardsPresent
+        ? "Tenant isolation policy coverage present with cross-tenant leakage guards."
+        : "Tenant isolation policy coverage missing or incomplete.",
+      {
+        notes: rlsCoverage.notes,
+      },
+    );
 
     const privilegeEscalationAttempt = deps.authorization.canPerformAction("viewer", "solution.publish");
     pushResult(
@@ -1137,13 +1150,23 @@ export async function runVerticalSliceValidation(
       {},
     );
 
+    const staleAuthResult = await deps.authCache.validateStaleAuthorizationCacheScenario({
+      orgId: request.orgId,
+      userId: request.actorUserId,
+      oldRoleRevision: "revision-v1",
+      newRoleRevision: "revision-v2",
+    });
     pushResult(
       authorizationValidation,
       "stale_authorization_cache_scenario",
-      "warning",
-      "Stale authorization cache scenario documented; requires adapter-level cache invalidation integration tests.",
+      staleAuthResult.staleAuthorizationRejected && staleAuthResult.cacheHitWithinTtl && staleAuthResult.failSafeDeniedOnCacheFailure
+        ? "passed"
+        : "failed",
+      staleAuthResult.staleAuthorizationRejected && staleAuthResult.cacheHitWithinTtl && staleAuthResult.failSafeDeniedOnCacheFailure
+        ? "Stale authorization cache is invalidated with fail-safe deny behavior."
+        : "Stale authorization cache strategy failed; refresh/invalidation guarantees are insufficient.",
       {
-        expectedBehavior: "role_change_invalidation_before_next_command",
+        notes: staleAuthResult.notes,
       },
     );
 
