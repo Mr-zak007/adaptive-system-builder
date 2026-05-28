@@ -27,6 +27,18 @@ export const ticketAssignedEventSchema = z.object({
   }),
 });
 
+export const ticketResolvedEventSchema = z.object({
+  eventName: z.literal("ticket.resolved"),
+  eventId: z.string().uuid(),
+  orgId: z.string().uuid(),
+  occurredAt: z.string().datetime(),
+  payload: z.object({
+    ticketId: z.string().uuid(),
+    resolvedByUserId: z.string().uuid(),
+    rowVersion: z.number().int().positive(),
+  }),
+});
+
 export const taskCompletedEventSchema = z.object({
   eventName: z.literal("task.completed"),
   eventId: z.string().uuid(),
@@ -84,6 +96,7 @@ export const escalationTriggeredEventSchema = z.object({
 export const domainEventEnvelopeSchema = z.discriminatedUnion("eventName", [
   ticketCreatedEventSchema,
   ticketAssignedEventSchema,
+  ticketResolvedEventSchema,
   taskCompletedEventSchema,
   solutionPublishedEventSchema,
   attachmentUploadedEventSchema,
