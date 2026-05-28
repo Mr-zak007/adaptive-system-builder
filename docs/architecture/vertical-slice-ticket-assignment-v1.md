@@ -45,3 +45,11 @@ Validate real architectural correctness with one end-to-end workflow before broa
 - dashboards/UI
 - advanced analytics and read-model expansion
 - multi-slice orchestration
+
+## Validation Harness Contract
+
+- Server function: `validateTicketLifecycleVerticalSlice`
+- Request DTO: `verticalSliceValidationRequestSchema`
+- Response DTO: `verticalSliceValidationResponseSchema`
+- Execution mode (current): in-memory architecture harness for deterministic behavioral validation
+- Next mode: swap to DB-backed adapters with the same contract for production-grade verification
