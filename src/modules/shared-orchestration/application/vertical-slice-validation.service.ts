@@ -1040,6 +1040,73 @@ export async function runVerticalSliceValidation(
       status: "pending_real_db_assertion",
     });
 
+    const privilegeEscalationAttempt = canRolePerformAction("viewer", "solution.publish");
+    pushResult(
+      authorizationValidation,
+      "privilege_escalation_attempt",
+      privilegeEscalationAttempt ? "failed" : "passed",
+      privilegeEscalationAttempt
+        ? "Viewer role unexpectedly has privileged action access."
+        : "Viewer role cannot escalate into privileged publish action.",
+      {},
+    );
+
+    const forbiddenTransitionAttempt = await deps.ticketRepo.assignTicket({
+      orgId: request.orgId,
+      ticketId,
+      assigneeUserId: request.actorUserId,
+      expectedRowVersion: ticketRowVersion,
+    });
+    pushResult(
+      authorizationValidation,
+      "forbidden_transition_protection",
+      forbiddenTransitionAttempt === null ? "passed" : "failed",
+      forbiddenTransitionAttempt === null
+        ? "Forbidden resolved→assigned transition blocked by invariants."
+        : "Forbidden transition unexpectedly succeeded.",
+      {
+        currentLifecycleState: "resolved",
+      },
+    );
+
+    const attachmentOwnershipBypassAttempt = await (async () => {
+      try {
+        await deps.attachmentRepo.registerAttachment({
+          orgId: randomUUID(),
+          ownerType: "ticket",
+          ownerId: ticketId,
+          fileName: "bypass.jpg",
+          mimeType: "image/jpeg",
+          sizeBytes: 1024,
+          checksumSha256: createHash("sha256").update("ownership-bypass").digest("hex"),
+          storageProvider: "lovable_storage",
+          storageKey: `org/foreign/${ticketId}/bypass.jpg`,
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    pushResult(
+      authorizationValidation,
+      "attachment_ownership_bypass",
+      attachmentOwnershipBypassAttempt ? "failed" : "passed",
+      attachmentOwnershipBypassAttempt
+        ? "Attachment ownership bypass succeeded unexpectedly."
+        : "Attachment ownership bypass blocked by org+owner validation.",
+      {},
+    );
+
+    pushResult(
+      authorizationValidation,
+      "stale_authorization_cache_scenario",
+      "warning",
+      "Stale authorization cache scenario documented; requires adapter-level cache invalidation integration tests.",
+      {
+        expectedBehavior: "role_change_invalidation_before_next_command",
+      },
+    );
+
     const indexValidation = await deps.queryValidator.validateIndexUsage({ orgId: request.orgId });
     pushResult(
       repositoryAndDbValidation,
