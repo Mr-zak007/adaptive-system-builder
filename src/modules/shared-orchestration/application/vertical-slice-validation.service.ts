@@ -116,11 +116,11 @@ export interface VerticalSliceValidationDeps {
   };
   fitnessChecker: {
     run(): Promise<{
-      crossModuleImportViolations: Array<Record<string, string>>;
-      repositoryLeakageViolations: Array<Record<string, string>>;
-      dtoViolations: Array<Record<string, string>>;
-      domainBypassViolations: Array<Record<string, string>>;
-      directDbAccessViolations: Array<Record<string, string>>;
+      crossModuleImportViolations: Array<{ rule: string; filePath: string; details: string }>;
+      repositoryLeakageViolations: Array<{ rule: string; filePath: string; details: string }>;
+      dtoViolations: Array<{ rule: string; filePath: string; details: string }>;
+      domainBypassViolations: Array<{ rule: string; filePath: string; details: string }>;
+      directDbAccessViolations: Array<{ rule: string; filePath: string; details: string }>;
     }>;
   };
   ticketRepo: SliceTicketRepositoryPort;
